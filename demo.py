@@ -13,7 +13,7 @@ import time
 from collections import deque
 from typing import Any
 
-from history import History, Run, freshness, grid_from_lines
+from history import History, Run, estimate_model, freshness, grid_from_lines
 from maprender import MapRenderer, RenderedMap
 from robot import RoomNames, build_restriction_payload
 
@@ -309,11 +309,13 @@ def _history() -> tuple[History, list[tuple[float, float]]]:
         # Only the lanes count as cleaning; driving between rooms doesn't.
         lines = [line for rid in rooms for line in _grid_lines(_lanes(ROOMS[rid][1]))]
         area = _area(rooms)
-        duration = int(area * 75)  # about 1¼ minutes per m²
+        # Mopping is slower, and the mop gets washed on the way: about 80 s per m² against 50.
+        duration = int(150 + area * 80) if mopped else int(90 + area * 50)
         end = int(now - hours * 3600)
         history.add(Run(
             id=f"demo-{end}", begin=end - duration, end=end, duration=duration, area=area, complete=True,
-            map_flag=0, source="demo", grid=grid_from_lines(lines, lines if mopped else [], LEFT, TOP + H - 1, W, H),
+            map_flag=0, source="demo", mode="vac_and_mop" if mopped else "vacuum",
+            grid=grid_from_lines(lines, lines if mopped else [], LEFT, TOP + H - 1, W, H),
         ))
     history.created = history.runs[0].begin
     for rid, days in INTERVALS.items():
@@ -436,13 +438,24 @@ class DemoController:
             self._record_run()
             self._go_dock()
 
+    def _mode_name(self) -> str:
+        if self.fan == 110 or self.water == 209 or self.mop == 306:
+            return "smart_mode"
+        if self.fan == 106 or self.water == 204 or self.mop == 302:
+            return "custom"
+        if self.water == 200:
+            return "vacuum"
+        if self.fan == 105:
+            return "mop"
+        return "vac_and_mop"
+
     def _record_run(self) -> None:
         """Keep the run that just finished, like the real app does."""
         end = int(time.time())
         lines = _grid_lines(self.path)
         self.history.add(Run(
             id=f"demo-{end}", begin=int(self._run_begin), end=end, duration=int(self.clean_time),
-            area=round(self.clean_area, 1), complete=True, map_flag=0, source="demo",
+            area=round(self.clean_area, 1), complete=True, map_flag=0, source="demo", mode=self._mode_name(),
             grid=grid_from_lines(lines, lines if self.water != 200 else [], LEFT, TOP + H - 1, W, H),
         ))
 
@@ -542,16 +555,7 @@ class DemoController:
             "returning_home": "returning", "emptying_the_bin": "dock", "washing_the_mop": "dock",
             "error": "error",
         }.get(st, "cleaning")
-        if self.fan == 110 or self.water == 209 or self.mop == 306:
-            mode = "smart_mode"
-        elif self.fan == 106 or self.water == 204 or self.mop == 302:
-            mode = "custom"
-        elif self.water == 200:
-            mode = "vacuum"
-        elif self.fan == 105:
-            mode = "mop"
-        else:
-            mode = "vac_and_mop"
+        mode = self._mode_name()
         return {
             "duid": self.duid, "name": "Qrevo S (demo)", "model": "roborock.vacuum.a104", "product": "Qrevo S",
             "connected": True, "local": True, "state": st, "phase": phase,
@@ -581,6 +585,9 @@ class DemoController:
         payload = m.as_payload(names, self.names, images=img != m.image_version)
         payload.update(available=True, maps=[{"flag": 0, "name": "Home"}], current_map=0)
         return payload
+
+    async def estimates(self) -> dict[str, Any]:
+        return estimate_model(self.history)
 
     async def freshness(self) -> dict[str, Any]:
         self._tick()

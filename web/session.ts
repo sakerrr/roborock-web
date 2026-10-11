@@ -3,6 +3,7 @@
 import { api, devicePath } from "./api";
 import { $, busyBtn, errorMessage, esc, icon, toast } from "./dom";
 import { mapEmpty, setMap } from "./map/core";
+import { loadEstimates } from "./estimate";
 import { preload3D } from "./map/views";
 import { renderSkeletons, setConn, setStatus } from "./panels";
 import { loadSettings } from "./settings";
@@ -227,6 +228,7 @@ let warmed = false;
 function warmUp(): void {
   if (warmed) return;
   warmed = true;
+  void loadEstimates();
   preload3D();
   setTimeout(() => {
     if (!S.settings && S.tab !== "settings") void loadSettings();

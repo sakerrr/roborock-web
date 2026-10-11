@@ -40,7 +40,7 @@ from roborock.exceptions import RoborockException, RoborockRateLimit, RoborockTo
 from roborock.roborock_typing import RoborockCommand
 from roborock.web_api import RoborockApiClient
 
-from history import Grid, History, Run, freshness, grid_from_map
+from history import Grid, History, Run, estimate_model, freshness, grid_from_map
 from maprender import MapRenderer, RenderedMap
 
 _LOGGER = logging.getLogger(__name__)
@@ -414,7 +414,7 @@ class DeviceController:
                 async with self._map_lock:
                     await self._refresh_map()
                 grid = grid_from_map(self._map) if self._map else None
-                self.history.add(_run(ids[0], summary.last_clean_record, grid, "live", self._p.status.current_map))
+                self.history.add(_run(ids[0], summary.last_clean_record, grid, "live", self._p.status.current_map, self._mode()))
             self._to_backfill = [rid for rid in ids[1:] if not self.history.has(str(rid))]
         # Fill in older runs from the robot's own list, one per look.
         if self._to_backfill:
@@ -437,6 +437,15 @@ class DeviceController:
                 _LOGGER.info("No map for past runs from this robot: %s", err or type(err).__name__)
             self._record_maps = grid is not None
         self.history.add(_run(rid, record, grid, "robot", None))
+
+    def _mode(self) -> str | None:
+        try:
+            return self._p.status.current_cleaning_mode_name
+        except Exception:  # noqa: BLE001 - not every model reports one
+            return None
+
+    async def estimates(self) -> dict[str, Any]:
+        return estimate_model(self.history)
 
     async def freshness(self) -> dict[str, Any]:
         if self._map is None:
@@ -788,7 +797,7 @@ def _version(raw: bytes) -> str:
     return hashlib.sha1(raw).hexdigest()[:12]
 
 
-def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: int | None) -> Run:
+def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: int | None, mode: str | None = None) -> Run:
     """A history entry from one of the robot's clean records (their ids are start times)."""
     begin = int(record.begin or rid)
     return Run(
@@ -800,6 +809,7 @@ def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: in
         complete=None if record.complete is None else bool(record.complete),
         map_flag=record.map_flag if record.map_flag is not None else flag,
         source=source,
+        mode=mode,
         grid=grid,
     )
 

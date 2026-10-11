@@ -129,6 +129,10 @@ def create_app(demo: bool) -> FastAPI:
     async def settings(duid: str):
         return await (await ctrl(duid)).settings()
 
+    @app.get("/api/devices/{duid}/estimates")
+    async def estimates(duid: str):
+        return await (await ctrl(duid)).estimates()
+
     @app.get("/api/devices/{duid}/freshness")
     async def freshness(duid: str):
         return await (await ctrl(duid)).freshness()

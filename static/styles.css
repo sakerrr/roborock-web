@@ -600,7 +600,7 @@ svg.i.tiny { width: 12px; height: 12px; }
 .theme-choice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .theme-choice button svg { width: 14px; height: 14px; }
 
-/* ---- Error help ---- */
+/* ---- Error help & estimates ---- */
 .help-card { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: rgba(208, 59, 59, 0.08); border: 1px solid rgba(208, 59, 59, 0.22); }
 .help-card.dock { background: rgba(250, 178, 25, 0.1); border-color: rgba(250, 178, 25, 0.3); }
 .help-title { display: flex; align-items: center; gap: 8px; font-weight: 750; font-size: 15px; }
@@ -614,5 +614,6 @@ svg.i.tiny { width: 12px; height: 12px; }
 .help-actions .btn-soft { display: inline-flex; align-items: center; gap: 6px; }
 .help-actions .btn-soft svg { width: 15px; height: 15px; }
 .help-notify { display: block; margin-top: 10px; font-size: 12.5px; }
+.estimate { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 .marker.stuck .robot { box-shadow: 0 0 0 4px rgba(208, 59, 59, 0.45); animation: stuck-pulse 1.4s ease-out infinite; }
 @keyframes stuck-pulse { 0% { box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.6); } 100% { box-shadow: 0 0 0 14px rgba(208, 59, 59, 0); } }

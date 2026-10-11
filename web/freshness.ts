@@ -6,6 +6,7 @@ import { api, devicePath } from "./api";
 import { $, closest, cssVar, esc, fmtArea, fmtDuration, fmtWhen, hexRgb, icon, toast } from "./dom";
 import { decodeMask, refreshMapOverlays, toBase, toggleRoom } from "./map/core";
 import { mapImg, stage } from "./map/elements";
+import { estimateText, roomsArea } from "./estimate";
 import { doAction } from "./panels";
 import { S } from "./state";
 import type { Freshness, RoomFreshness } from "./types";
@@ -274,8 +275,10 @@ export function renderFreshPanel(): void {
     </div>`;
   };
 
+  const est = due.length ? estimateText(roomsArea(due.map((r) => r.id)), S.repeat) : null;
   const go = due.length
-    ? `<button class="btn-primary fresh-go" data-fresh-go ${busy ? "disabled" : ""}>${icon("play")}<span>Clean ${due.length === 1 ? esc(names.get(due[0].id)) : `${due.length} due rooms`}</span></button>`
+    ? `<button class="btn-primary fresh-go" data-fresh-go ${busy ? "disabled" : ""}>${icon("play")}<span>Clean ${due.length === 1 ? esc(names.get(due[0].id)) : `${due.length} due rooms`}</span></button>
+       ${est && !busy ? `<div class="estimate">${icon("clock", "i tiny")}${est}</div>` : ""}`
     : `<div class="fresh-ok">${icon("check")}Every room is within its interval</div>`;
 
   const runs = (f.runs ?? [])
@@ -311,6 +314,7 @@ panel.addEventListener("click", async (e) => {
     try {
       await doAction("clean_rooms", { rooms: ids, repeat: S.repeat }, { button: go, okMsg: "Cleaning the rooms that are due" });
       S.jobRooms = ids;
+      S.jobArea = roomsArea(ids) * S.repeat;
       S.selected = [];
       refreshMapOverlays();
     } catch {

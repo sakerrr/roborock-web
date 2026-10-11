@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import os
+import statistics
 import time
 import zlib
 from dataclasses import asdict, dataclass
@@ -56,6 +57,7 @@ class Run:
     complete: bool | None = None
     map_flag: int | None = None
     source: str = "live"  # live: seen finishing by this app; robot: from the robot's own list; demo
+    mode: str | None = None  # cleaning mode (vacuum, vac_and_mop…), when known
     grid: Grid | None = None  # None when the path isn't known
 
 
@@ -155,6 +157,34 @@ class History:
         tmp = self._path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, separators=(",", ":")))
         os.replace(tmp, self._path)
+
+
+def estimate_model(history: History) -> dict[str, Any]:
+    """How long cleaning takes in this home, learned from past runs:
+    seconds = overhead (leaving and returning, washing the mop) + rate x m²."""
+
+    def fit(runs: list[Run]) -> dict[str, float] | None:
+        pts = [(r.area, r.duration) for r in runs if r.area and r.duration and r.area >= 3 and r.duration >= 60]
+        if len(pts) < 2:
+            return None
+        areas = [a for a, _ in pts]
+        if len(pts) >= 4 and max(areas) - min(areas) >= 5:
+            mean_a = sum(areas) / len(pts)
+            mean_d = sum(d for _, d in pts) / len(pts)
+            rate = sum((a - mean_a) * (d - mean_d) for a, d in pts) / sum((a - mean_a) ** 2 for a in areas)
+            overhead = mean_d - rate * mean_a
+            if 15 <= rate <= 400 and 0 <= overhead <= 900:
+                return {"rate": round(rate, 1), "overhead": round(overhead), "runs": len(pts)}
+        # Few runs, or they don't line up: a typical overhead and the median pace.
+        overhead = 120
+        rate = statistics.median(max(15.0, (d - overhead) / a) for a, d in pts)
+        return {"rate": round(rate, 1), "overhead": overhead, "runs": len(pts)}
+
+    modes = {}
+    for mode in sorted({r.mode for r in history.runs if r.mode}):
+        if found := fit([r for r in history.runs if r.mode == mode]):
+            modes[mode] = found
+    return {"overall": fit(history.runs), "modes": modes}
 
 
 def _place(img: Image.Image, g: Grid, x0: int, ytop: int, w: int, h: int) -> Image.Image:

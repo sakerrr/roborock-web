@@ -50,6 +50,7 @@ export interface AppState {
   mask: Mask | null;
   selected: number[];
   jobRooms: number[] | null; // rooms of the room clean in progress
+  jobArea: number | null; // m² (times passes) of the clean started here, for "time left"
   edit: EditState | null;
   viewMode: ViewMode;
   layers: Layers;
@@ -99,6 +100,7 @@ export const S: AppState = {
   mask: null,
   selected: [],
   jobRooms: null,
+  jobArea: null,
   edit: null,
   viewMode: savedViewMode(),
   layers: savedLayers(),

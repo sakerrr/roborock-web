@@ -5,6 +5,7 @@ import { $, $opt, busyBtn, esc, fmtArea, fmtDuration, human, icon, toast } from 
 import { DONE, HIDDEN_OPTS, MODE_LABEL, OPT_LABEL, STATE_LABEL, TANK_WARN } from "./labels";
 import { drawSelection, refreshMapOverlays } from "./map/core";
 import { errorHelp } from "./errors";
+import { estimateText, homeArea, loadEstimates, remainingParts, roomsArea, zoneArea } from "./estimate";
 import { freshJobChanged } from "./freshness";
 import { notifyEnabled, notifyProblem, notifySupported } from "./notify";
 import { loadSettings } from "./settings";
@@ -30,6 +31,10 @@ export function setStatus(st: Status): void {
   const newProblem = !!S.status && problem(st) !== problem(S.status) && !!(st.error || st.dock_error);
   S.status = st;
   if (jobChanged) freshJobChanged(!!st.job);
+  if (jobChanged && !st.job) {
+    S.jobArea = null;
+    setTimeout(() => void loadEstimates(), 60_000); // once the run is filed
+  }
   if (newProblem) {
     const h = errorHelp((st.error ?? st.dock_error)!, !st.error);
     notifyProblem(`${st.name || "Robot"}: ${h.title}`, h.fix[0]);
@@ -64,7 +69,7 @@ function statusSub(st: Status): string {
   switch (st.phase) {
     case "cleaning": {
       const room = S.map?.robot_room ? S.map.rooms.find((r) => r.id === S.map?.robot_room)?.name : undefined;
-      return [mode, room && `now in ${room}`].filter(Boolean).join(" · ") || "Working on it";
+      return [mode, room && `now in ${room}`, remainingParts(st)?.by].filter(Boolean).join(" · ") || "Working on it";
     }
     case "paused":
       return st.job ? "Tap resume to pick up where it left off" : "Waiting for you";
@@ -139,9 +144,13 @@ export function renderStatus(): void {
     html += `<div class="stats">
       <div class="stat"><b>${fmtArea(st.clean_area)}</b><span>${active ? "Cleaned" : "Last clean"}</span></div>
       <div class="stat"><b>${fmtDuration(st.clean_time)}</b><span>Time</span></div>
-      ${st.clean_percent != null
-        ? `<div class="stat"><b>${st.clean_percent}%</b><span>Progress</span></div>`
-        : `<div class="stat"><b>${esc(fanName(st) || "–")}</b><span>Suction</span></div>`}
+      ${(() => {
+        const left = remainingParts(st);
+        if (left) return `<div class="stat"><b>${left.left}</b><span>Left</span></div>`;
+        return st.clean_percent != null
+          ? `<div class="stat"><b>${st.clean_percent}%</b><span>Progress</span></div>`
+          : `<div class="stat"><b>${esc(fanName(st) || "–")}</b><span>Suction</span></div>`;
+      })()}
     </div>`;
   }
   for (const [code, dock] of [[st.error, false], [st.dock_error, true]] as const) {
@@ -181,6 +190,14 @@ function primaryAction(st: Status): PrimaryAction {
   return { label: "Clean everywhere", icon: "play", act: "start" };
 }
 
+/** m² the primary action would clean (once over). */
+function jobAreaFor(p: PrimaryAction): number {
+  if (p.act === "start") return homeArea();
+  if (p.act === "clean_rooms") return roomsArea(S.selected);
+  if (p.act === "clean_zone") return zoneArea(S.zone);
+  return 0;
+}
+
 export function renderActions(): void {
   const st = S.status;
   if (!st) return;
@@ -197,13 +214,18 @@ export function renderActions(): void {
       ${showStop ? `<button class="btn-round" data-act="stop" data-tip="Stop" aria-label="Stop">${icon("stop")}</button>` : ""}
       ${showDock ? `<button class="btn-round" data-act="dock" data-tip="Send to dock" aria-label="Send to dock">${icon("home")}</button>` : ""}
       <button class="btn-round" data-act="locate" data-tip="Find my robot" aria-label="Find my robot">${icon("bell")}</button>
-    </div>`;
+    </div>
+    ${idle ? (() => {
+      const est = estimateText(jobAreaFor(p), p.act === "start" ? 1 : S.repeat);
+      return est ? `<div class="estimate">${icon("clock", "i tiny")}${est}</div>` : "";
+    })() : ""}`;
   const btn = $<HTMLButtonElement>("#primary-btn");
   btn.onclick = async () => {
     if (!S.status) return;
     const act = primaryAction(S.status);
     try {
       await doAction(act.act, act.params ?? {}, { button: btn });
+      if (["start", "clean_rooms", "clean_zone"].includes(act.act)) S.jobArea = jobAreaFor(act) * (act.act === "start" ? 1 : S.repeat);
       if (["clean_rooms", "clean_zone", "goto"].includes(act.act)) {
         S.jobRooms = act.act === "clean_rooms" ? [...S.selected] : null;
         S.selected = [];

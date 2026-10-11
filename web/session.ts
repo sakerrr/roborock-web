@@ -178,11 +178,17 @@ export async function pollMap(force = false): Promise<void> {
   S.mapLoading = true;
   S.lastMapAt = Date.now();
   try {
-    const v = S.map?.version;
-    const q = v && !force ? `?since=${v}` : "";
-    const m = await api<MapResponse>(devicePath(`map${q}`));
+    // `since`: nothing changed, nothing sent. `img`: the images it has, so only what changed is sent.
+    const q = new URLSearchParams();
+    if (S.map && !force) q.set("since", S.map.version);
+    if (S.map && S.mask) q.set("img", S.map.image);
+    const qs = q.toString();
+    const m = await api<MapResponse>(devicePath(`map${qs ? `?${qs}` : ""}`));
     if (!m.available) mapEmpty("No map yet. Run a full clean once so the robot can learn your home.");
-    else if (!m.unchanged) await setMap(m);
+    else if (!m.unchanged) {
+      await setMap(m);
+      if (m.stale) setTimeout(() => void pollMap(true), 2500); // a saved map: the fresh one is on its way
+    }
   } catch (e) {
     if (!S.map) mapEmpty(`Couldn't load the map.<br><span class="muted">${esc(errorMessage(e))}</span>`);
   } finally {

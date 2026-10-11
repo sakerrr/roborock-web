@@ -107,8 +107,10 @@ export interface MapPayload {
   width: number;
   height: number;
   scale: number;
+  image: string; // version of base + mask: the server leaves them out when the browser has it
   base: string; // data URL
   mask: string; // data URL; see maprender.py for the channel layout
+  stale?: boolean; // the last saved map, shown while a fresh one comes in
   rooms: Room[];
   robot: Pose | null;
   charger: Point | null;
@@ -128,7 +130,10 @@ export interface MapPayload {
   current_map: number | null;
 }
 
-export type MapResponse = MapPayload | { available: false } | { available: true; version: string; unchanged: true };
+export type MapResponse =
+  | (Omit<MapPayload, "base" | "mask"> & { base?: string; mask?: string })
+  | { available: false }
+  | { available: true; version: string; unchanged: true };
 
 export interface Auth {
   demo: boolean;

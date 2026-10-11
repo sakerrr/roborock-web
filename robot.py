@@ -8,6 +8,7 @@ library's traits into plain JSON for the web UI.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
@@ -47,6 +48,7 @@ _LOGGER = logging.getLogger(__name__)
 STATUS_TTL = 2.0
 MAP_TTL_ACTIVE = 3.0
 MAP_TTL_IDLE = 20.0
+MAP_RETRY = 30.0  # after a failed map fetch, serve the last map this long before asking again
 SETTING_TIMEOUT = 8.0
 
 S = RoborockStateCode
@@ -165,8 +167,18 @@ def _hhmm(h: int | None, m: int | None) -> str | None:
 class DeviceController:
     """Everything the UI can do with one V1 vacuum."""
 
-    def __init__(self, device: RoborockDevice, nicknames: RoomNames | None = None, history: History | None = None) -> None:
+    def __init__(
+        self, device: RoborockDevice, nicknames: RoomNames | None = None, history: History | None = None,
+        data_dir: Path | None = None,
+    ) -> None:
         self.device = device
+        # The last map is kept on disk so a restart shows it straight away.
+        self._map_file = data_dir / f"map-{device.duid}.json" if data_dir else None
+        self._map_saved_at = 0.0
+        self._map_saved_image = ""
+        self._map_from_disk = False
+        self._map_failed_at = 0.0
+        self._map_task: asyncio.Task | None = None
         self._nicknames = nicknames or RoomNames(None)
         self.history = history or History(None)
         self._fresh: tuple[tuple, dict[str, Any]] | None = None
@@ -282,29 +294,88 @@ class DeviceController:
 
     # ---------- map ----------
 
-    async def map(self, since: str | None = None) -> dict[str, Any]:
+    async def map(self, since: str | None = None, img: str | None = None) -> dict[str, Any]:
+        """The map. `img` is the image version the browser has; the images are left out if it matches."""
         active = self._p.status.state in CLEANING_STATES | RETURNING_STATES
         ttl = MAP_TTL_ACTIVE if active else MAP_TTL_IDLE
-        if self._map is None or time.monotonic() - self._map_at > ttl:
-            async with self._map_lock:
-                if self._map is None or time.monotonic() - self._map_at > ttl:
-                    await self._refresh_map()
+        now = time.monotonic()
+        if self._map is not None and self._map_from_disk:
+            self._refresh_soon()  # just started: show the saved map while a fresh one comes in
+        elif self._map is None or (now - self._map_at > ttl and now - self._map_failed_at > MAP_RETRY):
+            try:
+                async with self._map_lock:
+                    if self._map is None or time.monotonic() - self._map_at > ttl:
+                        await self._refresh_map()
+            except Exception as err:  # noqa: BLE001 - offline or slow: show the last map there is
+                self._map_failed_at = time.monotonic()
+                if self._map is None:
+                    raise RoborockException(f"Couldn't get the map: {err or type(err).__name__}") from err
+                _LOGGER.info("Map refresh failed, showing the last one: %s", err or type(err).__name__)
         if self._map is None:
             return {"available": False}
         names = {**self._room_names, **self._nicknames.get(self.device.duid)}
         version = self._map.payload_version(names)
         if since and since == version:
             return {"available": True, "version": version, "unchanged": True}
-        payload = self._map.as_payload(names, self._room_names)
+        payload = self._map.as_payload(names, self._room_names, images=img != self._map.image_version)
         payload["available"] = True
         payload["maps"] = self._maps or []
         payload["current_map"] = self._p.status.current_map
+        payload["stale"] = self._map_from_disk  # the browser asks again soon for the fresh one
         return payload
+
+    def _refresh_soon(self) -> None:
+        """Fetch a fresh map in the background; the caller serves the one it has."""
+        if self._map_task is None or self._map_task.done():
+            self._map_task = asyncio.create_task(self._refresh_quietly())
+
+    async def _refresh_quietly(self) -> None:
+        try:
+            async with self._map_lock:
+                await self._refresh_map()
+        except Exception as err:  # noqa: BLE001
+            self._map_failed_at = time.monotonic()
+            self._map_from_disk = False  # stop retrying on every request; the normal pace takes over
+            _LOGGER.info("Couldn't refresh the map: %s", err or type(err).__name__)
+
+    async def _load_saved_map(self) -> None:
+        if self._map is not None or not self._map_file or not self._map_file.exists():
+            return
+        try:
+            saved = json.loads(self._map_file.read_text())
+            rendered = await asyncio.to_thread(self._renderer.render, base64.b64decode(saved["raw"]))
+        except Exception as err:  # noqa: BLE001 - it's only a head start
+            _LOGGER.info("Ignoring the saved map: %s", err)
+            return
+        if rendered is not None and self._map is None:
+            self._map, self._map_from_disk = rendered, True
+            self._room_names = {int(k): v for k, v in (saved.get("names") or {}).items()}
+            self._maps = saved.get("maps")
+
+    def _save_map(self, raw: bytes) -> None:
+        # Often enough to be useful after a restart, not on every move while it cleans.
+        assert self._map is not None
+        if not self._map_file or (
+            self._map.image_version == self._map_saved_image and time.monotonic() - self._map_saved_at < 300
+        ):
+            return
+        self._map_saved_at = time.monotonic()
+        self._map_saved_image = self._map.image_version
+        try:
+            data = {"raw": base64.b64encode(raw).decode(), "names": self._room_names, "maps": self._maps}
+            tmp = self._map_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data))
+            os.replace(tmp, self._map_file)
+        except OSError as err:
+            _LOGGER.info("Couldn't save the map: %s", err)
 
     # ---------- history & freshness ----------
 
     async def watch(self) -> None:
         """Keep the cleaning history up to date for as long as the app runs."""
+        # Get a head start for the first page load: the saved map now, a fresh one soon.
+        await self._load_saved_map()
+        self._refresh_soon()
         while True:
             delay = 300.0
             try:
@@ -377,10 +448,11 @@ class DeviceController:
         self._map_at = time.monotonic()
         if not isinstance(raw, bytes):
             raise RoborockException("Robot returned no map data")
-        if self._map is None or self._map.version != _version(raw):
+        if self._map is None or self._map_from_disk or self._map.version != _version(raw):
             rendered = await asyncio.to_thread(self._renderer.render, raw)
             if rendered is not None:
                 self._map = rendered
+        self._map_from_disk = False
         flag = p.status.current_map
         if flag != self._room_names_flag or not self._room_names:
             try:
@@ -397,6 +469,8 @@ class DeviceController:
                 ]
             except RoborockException as err:
                 _LOGGER.info("Could not load map list: %s", err)
+        if self._map is not None:
+            self._save_map(raw)
 
     # ---------- settings ----------
 
@@ -848,7 +922,7 @@ class RoborockService:
             for dev in await self._manager.get_devices():
                 if dev.v1_properties is not None:
                     history = History(self._data_dir / f"history-{dev.duid}.json")
-                    ctrl = DeviceController(dev, self._nicknames, history)
+                    ctrl = DeviceController(dev, self._nicknames, history, self._data_dir)
                     self._controllers[dev.duid] = ctrl
                     self._watchers.append(asyncio.create_task(ctrl.watch()))
         except Exception as err:  # surfaced in the UI

@@ -569,14 +569,14 @@ class DemoController:
             },
         }
 
-    async def map(self, since: str | None = None) -> dict[str, Any]:
+    async def map(self, since: str | None = None, img: str | None = None) -> dict[str, Any]:
         self._tick()
         m = self._rendered()
         names = {**self.names, **self.nicknames.get(self.duid)}
         version = m.payload_version(names)
         if since and since == version:
             return {"available": True, "version": version, "unchanged": True}
-        payload = m.as_payload(names, self.names)
+        payload = m.as_payload(names, self.names, images=img != m.image_version)
         payload.update(available=True, maps=[{"flag": 0, "name": "Home"}], current_map=0)
         return payload
 

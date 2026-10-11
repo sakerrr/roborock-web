@@ -69,10 +69,20 @@ BASE_DRAWABLES: list[Drawable] = []
 
 
 class _NoCarpetParser(RoborockMapDataParser):
-    """Skip the carpet checkerboard: it breaks room masks and looks busy."""
+    """Skips the carpet checkerboard (it breaks room masks and looks busy), and reuses the
+    image while only the robot and its path change: drawing it is a slow per-pixel loop."""
+
+    image_key = ""
+    _image: tuple[str, Any] | None = None
 
     def _parse_image(self, *, carpet_map, **kwargs):  # type: ignore[override]
-        return super()._parse_image(carpet_map=None, **kwargs)
+        removed = kwargs.get("removed_map")
+        key = hashlib.sha1(kwargs["header"] + kwargs["data"] + repr(sorted(removed) if removed else None).encode()).hexdigest()[:12]
+        if self._image is None or self._image[0] != key:
+            # Nothing draws on the result afterwards (no drawables, no rotation), so it can be shared.
+            self._image = (key, super()._parse_image(carpet_map=None, **kwargs))
+        self.image_key = key
+        return self._image[1]
 
 
 def _base_parser() -> RoborockMapDataParser:
@@ -114,6 +124,7 @@ class RenderedMap:
     restrictions: list[dict[str, Any]] = field(default_factory=list)
     no_carpet_zones: int = 0
     things: dict[str, Any] = field(default_factory=dict)  # path, obstacles, zones…, in base px
+    image_version: str = ""  # changes only when the images (floor, rooms, carpets) do
     # Values needed to turn base-image pixels back into device millimetres.
     top: int = 0
     left: int = 0
@@ -130,7 +141,8 @@ class RenderedMap:
         tag = hashlib.sha1(repr(sorted(names.items())).encode()).hexdigest()[:6]
         return f"{self.version}-{tag}"
 
-    def as_payload(self, names: dict[int, str], original_names: dict[int, str] | None = None) -> dict[str, Any]:
+    def as_payload(self, names: dict[int, str], original_names: dict[int, str] | None = None, images: bool = True) -> dict[str, Any]:
+        """The map for the browser. Without images when it already has this image_version."""
         originals = names if original_names is None else original_names
 
         def room(rid: int, p: dict[str, float]) -> dict[str, Any]:
@@ -143,8 +155,11 @@ class RenderedMap:
             "width": self.width,
             "height": self.height,
             "scale": SCALE,
-            "base": "data:image/png;base64," + base64.b64encode(self.base_png).decode(),
-            "mask": "data:image/png;base64," + base64.b64encode(self.mask_png).decode(),
+            "image": self.image_version,
+            **({
+                "base": "data:image/png;base64," + base64.b64encode(self.base_png).decode(),
+                "mask": "data:image/png;base64," + base64.b64encode(self.mask_png).decode(),
+            } if images else {}),
             "rooms": [room(rid, p) for rid, p in sorted(self.rooms.items())],
             "robot": self.robot,
             "charger": self.charger,
@@ -161,25 +176,34 @@ class MapRenderer:
     def __init__(self) -> None:
         self._base = _base_parser()
         self._mask = _mask_parser()
+        self._images: tuple[str, tuple[bytes, bytes, dict[int, dict[str, float]]]] | None = None
 
     def render(self, raw: bytes) -> RenderedMap | None:
         base = self._base.parse(raw)
         if base.image is None or base.image.is_empty:
             return None
-        mask = self._mask.parse(raw)
         dims = base.image.dimensions
-
         base_img: Image.Image = base.image.data
-        mask_img: Image.Image = mask.image.data if mask.image is not None else Image.new("RGBA", (1, 1))
-        _stamp_carpets(mask_img, mask.carpet_map)
+
+        # While it cleans, the map changes every few seconds but the floor and rooms rarely
+        # do: keep the room mask, the PNGs and room info until the image or the carpets change.
+        carpets = hashlib.sha1(repr(sorted(base.carpet_map or ())).encode()).hexdigest()[:6]
+        image_version = f"{self._base.image_key}{carpets}"
+        if self._images is None or self._images[0] != image_version:
+            mask = self._mask.parse(raw)
+            mask_img: Image.Image = mask.image.data.copy() if mask.image is not None else Image.new("RGBA", (1, 1))
+            _stamp_carpets(mask_img, mask.carpet_map)
+            self._images = (image_version, (_png(base_img), _png(mask_img), _room_info(mask_img)))
+        base_png, mask_png, rooms = self._images[1]
 
         return RenderedMap(
             version=hashlib.sha1(raw).hexdigest()[:12],
+            image_version=image_version,
             width=base_img.width,
             height=base_img.height,
-            base_png=_png(base_img),
-            mask_png=_png(mask_img),
-            rooms=_room_info(mask_img),
+            base_png=base_png,
+            mask_png=mask_png,
+            rooms=rooms,
             robot=_point(base, base.vacuum_position, with_angle=True),
             charger=_point(base, base.charger),
             robot_room=base.vacuum_room,

@@ -106,6 +106,7 @@ If a map has no-carpet zones made in the Roborock app, the editor warns you: the
 
 - Your Roborock session token is stored in `data/session.json` (readable only by you). **Sign out** in Settings, or delete the `data/` folder, to remove it.
 - Cleaning history (for Freshness) is kept in `data/history-<robot>.json`. It never leaves your computer.
+- The last map is kept in `data/map-<robot>.json`, so the app can show it straight away after a restart (and while the robot is offline).
 - The app only talks to Roborock's servers and to your robot.
 - By default it only listens on `localhost`. With `--host 0.0.0.0`, **anyone on your network can control the robot**. There's no password, so only do this on a network you trust.
 

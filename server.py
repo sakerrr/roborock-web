@@ -17,6 +17,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from roborock.exceptions import RoborockException
@@ -60,6 +61,8 @@ def create_app(demo: bool) -> FastAPI:
         await service.stop()
 
     app = FastAPI(title="Roborock", lifespan=lifespan, docs_url=None, redoc_url=None)
+    # Mostly for opening it from another device: the script and map data shrink to about a third.
+    app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5)
 
     @app.middleware("http")
     async def revalidate_static(request: Request, call_next):
@@ -114,8 +117,8 @@ def create_app(demo: bool) -> FastAPI:
         return await (await ctrl(duid)).status()
 
     @app.get("/api/devices/{duid}/map")
-    async def map_(duid: str, since: str | None = None):
-        return await (await ctrl(duid)).map(since)
+    async def map_(duid: str, since: str | None = None, img: str | None = None):
+        return await (await ctrl(duid)).map(since, img)
 
     @app.get("/api/devices/{duid}/settings")
     async def settings(duid: str):

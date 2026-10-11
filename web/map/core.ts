@@ -6,7 +6,7 @@ import { doAction, renderActions, renderStatus } from "../panels";
 import { freshLabel, freshMapChanged } from "../freshness";
 import { pollMap } from "../session";
 import { S, type Tool } from "../state";
-import type { MapPayload, Mask, Point } from "../types";
+import type { MapResponse, Mask, Point } from "../types";
 import { copyRestrictions, editRoomClick, endEdit, renderEditFoot, renderShapes, syncInnerClasses } from "./editor";
 import { drawSvg, inner, mapImg, selCanvas, shapesSvg } from "./elements";
 import { fitMap, releaseStage } from "./fit";
@@ -34,13 +34,20 @@ export async function decodeMask(src: string): Promise<Mask> {
   return { w: c.width, h: c.height, data: ctx.getImageData(0, 0, c.width, c.height).data };
 }
 
-export async function setMap(m: MapPayload): Promise<void> {
-  const [, mask] = await Promise.all([loadImg(m.base), decodeMask(m.mask)]);
+export async function setMap(res: Extract<MapResponse, { image: string }>): Promise<void> {
+  // While it cleans, only the robot and its path change: keep the images it already has.
+  const prev = S.map;
+  const same = !res.base && !!prev && prev.image === res.image && !!S.mask;
+  const m = { ...res, base: res.base ?? prev?.base ?? "", mask: res.mask ?? prev?.mask ?? "" };
+  const mask = same && S.mask ? S.mask : (await Promise.all([loadImg(m.base), decodeMask(m.mask)]))[1];
   S.map = m;
   S.mask = mask;
-  mapImg.src = viewImage();
-  selCanvas.width = mask.w;
-  selCanvas.height = mask.h;
+  const src = viewImage();
+  if (mapImg.src !== src) mapImg.src = src;
+  if (selCanvas.width !== mask.w || selCanvas.height !== mask.h) {
+    selCanvas.width = mask.w;
+    selCanvas.height = mask.h;
+  }
   drawSvg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
   shapesSvg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
   const ids = new Set(m.rooms.map((r) => r.id));

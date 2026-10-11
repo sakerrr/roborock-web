@@ -51,7 +51,8 @@ MAP_TTL_IDLE = 20.0
 MAP_RETRY = 30.0  # after a failed map fetch, serve the last map this long before asking again
 TOO_MANY_CODES = (
     "Roborock isn't sending new codes to this account right now, because too many were asked for. "
-    "If one arrived by email in the last few minutes, enter it below. Otherwise try again in about an hour."
+    "It often clears within an hour, but after many tries in one day it can take until the next day, "
+    "and each new try can extend it. If a code arrived by email in the last few minutes, enter it below."
 )
 SETTING_TIMEOUT = 8.0
 

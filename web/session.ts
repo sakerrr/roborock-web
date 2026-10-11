@@ -95,6 +95,22 @@ $<HTMLFormElement>("#code-form").addEventListener("submit", async (e) => {
   }
 });
 
+$<HTMLButtonElement>("#resend-code").addEventListener("click", async (e) => {
+  const btn = e.currentTarget as HTMLButtonElement;
+  if (!S.auth?.email) return;
+  $("#code-err").textContent = "";
+  busyBtn(btn, true);
+  try {
+    S.auth = await api<Auth>("/api/auth/code", { method: "POST", body: { email: S.auth.email, send: true } });
+    showLogin();
+    if (!S.auth.code_note) toast("New code sent. Check your inbox");
+  } catch (err) {
+    $("#code-err").textContent = errorMessage(err);
+  } finally {
+    busyBtn(btn, false);
+  }
+});
+
 $("#change-email").addEventListener("click", () => {
   if (S.auth) S.auth.code_sent = false;
   showLogin();

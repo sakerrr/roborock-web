@@ -588,3 +588,6 @@ svg.i.tiny { width: 12px; height: 12px; }
 .map-inner.fresh .room-label.due .area { color: inherit; font-weight: 750; }
 .map-inner.fresh .room-label.sel { background: var(--accent); color: #fff; }
 .map-inner.fresh .room-label.sel .area { color: rgba(255, 255, 255, 0.85); }
+
+.code-note { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(236, 131, 90, 0.14); color: var(--text); font-size: 13.5px; line-height: 1.45; }
+#have-code { display: block; margin: 12px auto 0; }

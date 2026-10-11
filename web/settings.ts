@@ -39,7 +39,7 @@ export function renderSettings(): void {
   if (offline) {
     cards.push(`<div class="card offline-card"><div class="card-head"><h3 class="card-title">${icon("wifi")}Can't reach your robot</h3></div>
       <p class="muted">Sound, do not disturb, dock and maintenance settings are read from the robot itself, so they'll be back here as soon as it's online again. Check that it's switched on and connected to Wi‑Fi.</p>
-      <button class="btn-soft" data-act="refresh-settings" style="margin-top:14px">Try again</button></div>`);
+      <button class="btn-soft" data-act="reconnect" style="margin-top:14px">Reconnect</button></div>`);
   }
 
   // Robot

@@ -10,7 +10,7 @@ import {
 import { resetView } from "./map/panzoom";
 import { setViewMode, show3D, syncViewChrome } from "./map/views";
 import { doAction, renderActions, renderSkeletons, setModeValue } from "./panels";
-import { logout, refreshAuth, startLoops } from "./session";
+import { logout, reconnect, refreshAuth, startLoops } from "./session";
 import { loadSettings, setChoice } from "./settings";
 import { S, type EditTool, type ViewMode } from "./state";
 
@@ -65,6 +65,8 @@ document.addEventListener("click", async (e) => {
       return location.reload();
     case "logout":
       return logout();
+    case "reconnect":
+      return reconnect(t);
     case "refresh-settings":
       return loadSettings();
     case "dismiss-update":

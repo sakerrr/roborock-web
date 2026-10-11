@@ -140,6 +140,7 @@ export interface Auth {
   logged_in: boolean;
   email: string | null;
   code_sent: boolean;
+  code_note?: string | null; // why no new code was sent (Roborock pauses them after a few)
   connecting: boolean;
   error: string | null;
   restart_needed?: boolean;

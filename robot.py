@@ -36,7 +36,7 @@ from roborock.devices.device import RoborockDevice
 from roborock.devices.device_manager import DeviceManager, UserParams, create_device_manager
 from roborock.devices.file_cache import FileCache
 from roborock.devices.traits.v1.consumeable import ConsumableAttribute
-from roborock.exceptions import RoborockException
+from roborock.exceptions import RoborockException, RoborockRateLimit, RoborockTooFrequentCodeRequests
 from roborock.roborock_typing import RoborockCommand
 from roborock.web_api import RoborockApiClient
 
@@ -49,6 +49,10 @@ STATUS_TTL = 2.0
 MAP_TTL_ACTIVE = 3.0
 MAP_TTL_IDLE = 20.0
 MAP_RETRY = 30.0  # after a failed map fetch, serve the last map this long before asking again
+TOO_MANY_CODES = (
+    "Roborock isn't sending new codes to this account right now, because too many were asked for. "
+    "If one arrived by email in the last few minutes, enter it below. Otherwise try again in about an hour."
+)
 SETTING_TIMEOUT = 8.0
 
 S = RoborockStateCode
@@ -837,6 +841,8 @@ class RoborockService:
         self._cache = SafeCache(data_dir / "cache.pkl")
         self._session: dict[str, Any] | None = None
         self._pending: tuple[str, RoborockApiClient] | None = None
+        self._clients: dict[str, RoborockApiClient] = {}  # one per email: a code belongs to the client that asked for it
+        self._code_note: str | None = None
         self._manager: DeviceManager | None = None
         self._controllers: dict[str, DeviceController] = {}
         self._watchers: list[asyncio.Task] = []
@@ -865,16 +871,27 @@ class RoborockService:
             "logged_in": self._session is not None,
             "email": (self._session or {}).get("email") or (self._pending[0] if self._pending else None),
             "code_sent": self._pending is not None,
+            "code_note": self._code_note,
             "connecting": bool(self._connect_task and not self._connect_task.done()),
             "error": self._connect_error,
         }
 
-    async def request_code(self, email: str) -> None:
+    async def request_code(self, email: str, send: bool = True) -> None:
+        """Email a sign-in code (or, with send=False, get ready for one that already came)."""
         email = email.strip()
         if "@" not in email:
             raise ValueError("Enter the email you use in the Roborock app")
-        client = RoborockApiClient(username=email)
-        await client.request_code_v4()
+        client = self._clients.get(email.lower())
+        if client is None:
+            client = self._clients[email.lower()] = RoborockApiClient(username=email)
+        self._code_note = None
+        if send:
+            try:
+                await client.request_code_v4()
+            except (RoborockTooFrequentCodeRequests, RoborockRateLimit):
+                # Roborock stops sending codes for a while after a few requests. One that was
+                # sent earlier can still be good, so keep the code step open.
+                self._code_note = TOO_MANY_CODES
         self._pending = (email, client)
 
     async def login(self, code: str) -> None:
@@ -888,14 +905,25 @@ class RoborockService:
             "user_data": user_data.as_dict(),
         }
         self._pending = None
+        self._code_note = None
         self._write_session()
         self._connect_task = asyncio.create_task(self._connect())
         await self._connect_task
+
+    async def reconnect(self) -> None:
+        """Connect again with the saved session. No new code needed."""
+        if self._session is None:
+            raise ValueError("Sign in first")
+        if not (self._connect_task and not self._connect_task.done()):
+            await self._close_manager()
+            self._connect_task = asyncio.create_task(self._connect())
+        await self._ready()
 
     async def logout(self) -> None:
         await self._close_manager()
         self._session = None
         self._pending = None
+        self._code_note = None
         self._connect_error = None
         for f in (self._session_file, self._data_dir / "cache.pkl"):
             f.unlink(missing_ok=True)

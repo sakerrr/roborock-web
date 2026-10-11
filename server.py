@@ -94,13 +94,18 @@ def create_app(demo: bool) -> FastAPI:
         return {**service.auth_state(), "restart_needed": outdated}
 
     @app.post("/api/auth/code")
-    async def request_code(email: str = Body(..., embed=True)):
-        await service.request_code(email)
+    async def request_code(email: str = Body(..., embed=True), send: bool = Body(True, embed=True)):
+        await service.request_code(email, send)
         return service.auth_state()
 
     @app.post("/api/auth/login")
     async def login(code: str = Body(..., embed=True)):
         await service.login(code)
+        return service.auth_state()
+
+    @app.post("/api/reconnect")
+    async def reconnect():
+        await service.reconnect()
         return service.auth_state()
 
     @app.post("/api/auth/logout")

@@ -1,7 +1,7 @@
 // Signing in, finding the robots, and polling status and map.
 
 import { api, devicePath } from "./api";
-import { $, busyBtn, errorMessage, esc, icon } from "./dom";
+import { $, busyBtn, errorMessage, esc, icon, toast } from "./dom";
 import { mapEmpty, setMap } from "./map/core";
 import { preload3D } from "./map/views";
 import { renderSkeletons, setConn, setStatus } from "./panels";
@@ -43,6 +43,10 @@ function showLogin(): void {
   $("#login-step-code").hidden = !codeStep;
   if (codeStep) {
     $("#code-email").textContent = auth.email || "";
+    $("#code-note").textContent = auth.code_note || "";
+    $("#code-note").hidden = !auth.code_note;
+    $("#code-sent-to").hidden = !!auth.code_note;
+    $("#code-title").textContent = auth.code_note ? "Enter your code" : "Check your inbox";
     $<HTMLInputElement>("#code").focus();
   } else {
     const email = $<HTMLInputElement>("#email");
@@ -51,19 +55,29 @@ function showLogin(): void {
   }
 }
 
-$<HTMLFormElement>("#email-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const btn = $<HTMLButtonElement>("#email-form button");
+async function toCodeStep(btn: HTMLButtonElement, send: boolean): Promise<void> {
   $("#email-err").textContent = "";
   busyBtn(btn, true);
   try {
-    S.auth = await api<Auth>("/api/auth/code", { method: "POST", body: { email: $<HTMLInputElement>("#email").value } });
+    S.auth = await api<Auth>("/api/auth/code", { method: "POST", body: { email: $<HTMLInputElement>("#email").value, send } });
     showLogin();
   } catch (err) {
     $("#email-err").textContent = errorMessage(err);
   } finally {
     busyBtn(btn, false);
   }
+}
+
+$<HTMLFormElement>("#email-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  void toCodeStep($<HTMLButtonElement>("#email-form button[type=submit]"), true);
+});
+
+// A code from an earlier email still works for a while; no need to ask for another.
+$<HTMLButtonElement>("#have-code").addEventListener("click", (e) => {
+  const email = $<HTMLInputElement>("#email");
+  if (!email.reportValidity()) return;
+  void toCodeStep(e.currentTarget as HTMLButtonElement, false);
 });
 
 $<HTMLFormElement>("#code-form").addEventListener("submit", async (e) => {
@@ -87,9 +101,30 @@ $("#change-email").addEventListener("click", () => {
 });
 
 export async function logout(): Promise<void> {
-  if (!confirm("Sign out of your Roborock account on this computer?")) return;
+  const ok = confirm(
+    "Sign out of your Roborock account on this computer?\n\n" +
+      "Signing back in needs a new code by email, and Roborock only sends a few an hour. " +
+      "If the robot isn't responding, try Reconnect instead.",
+  );
+  if (!ok) return;
   await api("/api/auth/logout", { method: "POST" });
   location.reload();
+}
+
+/** Connect to Roborock again with the saved sign-in, without asking for a new code. */
+export async function reconnect(btn?: HTMLButtonElement | null): Promise<void> {
+  if (btn) busyBtn(btn, true);
+  try {
+    S.auth = await api<Auth>("/api/reconnect", { method: "POST" });
+    toast(S.auth.error ? `Still can't connect: ${S.auth.error}` : "Reconnected", !!S.auth.error);
+  } catch (e) {
+    toast(errorMessage(e), true);
+  } finally {
+    if (btn) busyBtn(btn, false);
+  }
+  S.status = null;
+  S.settings = null;
+  await refreshAuth();
 }
 
 /* ---------------- robots & polling ---------------- */
@@ -118,7 +153,7 @@ async function loadDevices(): Promise<void> {
       : S.devices.length
         ? "Your robots use a protocol this app doesn't support yet."
         : "No robots found on this account.";
-    centerMsg(`<div>${why}<br><br><button class="btn-soft" data-act="reload">Try again</button> <button class="btn-soft danger" data-act="logout">${icon("logout")}Sign out</button></div>`);
+    centerMsg(`<div>${why}<br><br><button class="btn-soft" data-act="reconnect">Reconnect</button> <button class="btn-soft danger" data-act="logout">${icon("logout")}Sign out</button></div>`);
     return;
   }
   let saved: string | null = null;

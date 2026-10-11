@@ -86,7 +86,8 @@ export function renderStatus(): void {
   if (!st) return;
   const el = $("#status-card");
   if (st.connected === false && st.state == null) {
-    el.innerHTML = `<div class="status-state">Can't reach robot</div><div class="status-sub">${esc(st.message || "It may be offline or out of Wi‑Fi range.")}</div>`;
+    el.innerHTML = `<div class="status-state">Can't reach robot</div><div class="status-sub">${esc(st.message || "It may be offline or out of Wi‑Fi range.")}</div>
+      <button class="btn-soft" data-act="reconnect" style="margin-top:14px">Reconnect</button>`;
     return;
   }
   const b = st.battery ?? 0;

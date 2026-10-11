@@ -726,7 +726,10 @@ class DemoService:
         return {"demo": True, "logged_in": True, "email": "demo@example.com", "code_sent": False,
                 "connecting": False, "error": None}
 
-    async def request_code(self, email: str) -> None:
+    async def request_code(self, email: str, send: bool = True) -> None:
+        pass
+
+    async def reconnect(self) -> None:
         pass
 
     async def login(self, code: str) -> None:

@@ -1,11 +1,12 @@
 // Map views: the colour map (2D), the floor plan, and the 3D view.
 
-import type { Map3D } from "../map3d";
+import type { Map3D, Marker3D } from "../map3d";
 import { $, $$, cssVar, hexRgb, toast } from "../dom";
 import { S, type ViewMode } from "../state";
 import { drawSelection, refreshMapOverlays, roomAt, setTool, toggleRoom } from "./core";
 import { itemPx } from "./editor";
 import { inner, mapImg, selCanvas, stage } from "./elements";
+import { OBSTACLE_ICON } from "./layers";
 import { applyView } from "./panzoom";
 
 export function setViewMode(mode: ViewMode): void {
@@ -76,6 +77,10 @@ export function sync3D(mapChanged = false): void {
   if (mapChanged) map3d.setMap(m, S.mask, m.mask);
   map3d.setLabels(m.rooms.map((r) => ({ id: r.id, name: r.name, x: r.x, y: r.y, sel: S.selected.includes(r.id) })));
   map3d.setRestrictions(m.frame ? m.restrictions.map((r) => ({ type: r.type, pts: itemPx(r) })) : []);
+  const markers: Marker3D[] = (m.obstacles ?? []).map((o) => ({ x: o.x, y: o.y, cls: o.kind, title: o.label, icon: OBSTACLE_ICON[o.kind] }));
+  if (m.goto) markers.push({ x: m.goto[0], y: m.goto[1], cls: "goto", title: "Where the robot is heading", icon: "target" });
+  map3d.setThings(m, markers);
+  map3d.setLayers(S.layers);
   map3d.setSelectionCanvas(selCanvas);
 }
 
@@ -91,7 +96,7 @@ export function planImage(): string {
   const m = S.map;
   const mask = S.mask;
   if (!m || !mask) return "";
-  const key = `${m.mask.length}:${m.mask.slice(-64)}:${m.width}:${cssVar("--plan-paper")}`;
+  const key = `${m.mask.length}:${m.mask.slice(-64)}:${m.width}:${cssVar("--plan-paper")}:${S.layers.carpets}`;
   if (planCache.key === key) return planCache.url;
 
   const { w, h, data } = mask;
@@ -117,7 +122,7 @@ export function planImage(): string {
       const room = data[i];
       const kind = data[i + 1];
       const isCarpet = data[i + 2];
-      let c = kind === 1 ? wall : kind === 2 ? furniture : isCarpet ? carpet : paper;
+      let c = kind === 1 ? wall : kind === 2 ? furniture : isCarpet && S.layers.carpets ? carpet : paper;
       // A soft line where two rooms meet without a wall in between.
       if (room) {
         const right = x + 1 < w ? data[i + 4] : room;
@@ -125,7 +130,7 @@ export function planImage(): string {
         if ((right && right !== room) || (down && down !== room)) c = blend(c, edge);
       }
       out.set(c, i);
-      if (isCarpet && kind !== 1) rugImg.data.set([0, 0, 0, 255], i);
+      if (isCarpet && kind !== 1 && S.layers.carpets) rugImg.data.set([0, 0, 0, 255], i);
     }
   }
   sctx.putImageData(img, 0, 0);

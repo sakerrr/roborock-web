@@ -140,6 +140,13 @@ def build_map(
     no_go: list[tuple[int, ...]] = (),  # type: ignore[assignment]
     no_mop: list[tuple[int, ...]] = (),  # type: ignore[assignment]
     carpets: bytes = CARPETS,
+    *,
+    mopping: bool = False,
+    obstacles: list[tuple[int, int, int]] = (),  # type: ignore[assignment]
+    no_carpet: list[tuple[int, ...]] = (),  # type: ignore[assignment]
+    zones: list[tuple[int, int, int, int]] = (),  # type: ignore[assignment]
+    goto: tuple[float, float] | None = None,
+    goto_path: list[tuple[float, float]] = (),  # type: ignore[assignment]
 ) -> bytes:
     blocks = [
         _block(1, b"", struct.pack("<ii", *_mm(CHARGER))),
@@ -152,6 +159,19 @@ def build_map(
     if len(path) > 1:
         pts = b"".join(struct.pack("<hh", *_mm(p)) for p in path)
         blocks.append(_block(3, struct.pack("<III", len(path), 2, int(angle)), pts))
+        # Which path points were mopped (the robot sends this as a mask over the path).
+        blocks.append(_block(18, b"", bytes([1 if mopping else 0] * len(path))))
+    if obstacles:
+        blocks.append(_block(13, struct.pack("<H", len(obstacles)), b"".join(struct.pack("<5H", x, y, kind, 9, 10) for x, y, kind in obstacles)))
+    if no_carpet:
+        blocks.append(_block(19, struct.pack("<H", len(no_carpet)), b"".join(struct.pack("<8H", *a) for a in no_carpet)))
+    if zones:
+        blocks.append(_block(6, struct.pack("<H", len(zones)), b"".join(struct.pack("<4H", *z) for z in zones)))
+    if goto:
+        blocks.append(_block(7, b"", struct.pack("<HH", *_mm(goto))))
+        if len(goto_path) > 1:
+            pts = b"".join(struct.pack("<hh", *_mm(p)) for p in goto_path)
+            blocks.append(_block(5, struct.pack("<III", len(goto_path), 2, 0), pts))
     blocks.append(_block(8, b"", struct.pack("<iii", *_mm(robot), int(angle))))
     body = b"".join(blocks)
     header = b"rr" + struct.pack("<HIHHII", 20, 20 + len(body), 1, 0, 0, seq)
@@ -238,6 +258,16 @@ class DemoController:
         self.no_go: list[tuple[int, ...]] = [_rect_mm(150, 6, 162, 15)]  # pet bowls
         self.no_mop: list[tuple[int, ...]] = [_rect_mm(14, 84, 44, 106)]  # bedroom rug
         self._edit_rev = 0
+        # Things the robot "spotted" on its last run: (x mm, y mm, obstacle type code).
+        self.obstacles = [
+            (*_mm((40, 40)), 0),  # cable by the sofa
+            (*_mm((96, 63)), 2),  # shoes at the hallway door
+            (*_mm((152, 40)), 1),  # pet waste in the kitchen
+            (*_mm((50, 112)), 10),  # clothes in the bedroom
+        ]
+        self.no_carpet = [_rect_mm(74, 14, 84, 22)]  # "this corner of the rug isn't carpet"
+        self.active_zone: tuple[int, int, int, int] | None = None
+        self.goto_target: tuple[float, float] | None = None
         self.consumables = {
             "main_brush_work_time": 412000, "side_brush_work_time": 655000, "filter_work_time": 210000,
             "sensor_dirty_time": 99000, "strainer_work_times": 40, "cleaning_brush_work_times": 120,
@@ -284,6 +314,9 @@ class DemoController:
             self._arrived()
 
     def _arrived(self) -> None:
+        self.goto_target = None
+        if self._route_kind != "clean":
+            self.active_zone = None
         if self._route_kind == "dock":
             self.pos, self.angle = DOCKED_POS, 90.0
             self.state = "charging"
@@ -304,6 +337,7 @@ class DemoController:
             cur = snake[-1]
         self._route, self._route_kind = route, "clean"
         self.path = [self.pos]
+        self.active_zone = self.goto_target = None
         self.state, self.in_cleaning = state, job
         self.clean_time = self.clean_area = 0.0
 
@@ -313,10 +347,18 @@ class DemoController:
         self.state = "returning_home"
 
     def _rendered(self) -> RenderedMap:
-        key = (round(self.pos[0], 1), round(self.pos[1], 1), len(self.path), self._edit_rev)
+        key = (round(self.pos[0], 1), round(self.pos[1], 1), len(self.path), self._edit_rev, self.active_zone, self.goto_target)
         if self._map is None or key != self._map_key:
             path = self.path[:: max(1, len(self.path) // 1500)] + ([self.pos] if self.path else [])
-            raw = build_map(self.pos, self.angle, path, len(self.path), self.grid, self.walls, self.no_go, self.no_mop)
+            raw = build_map(
+                self.pos, self.angle, path, len(self.path), self.grid, self.walls, self.no_go, self.no_mop,
+                mopping=self.water != 200,
+                obstacles=self.obstacles,
+                no_carpet=self.no_carpet,
+                zones=[self.active_zone] if self.active_zone else [],
+                goto=self.goto_target,
+                goto_path=[self.pos, *self._route] if self.goto_target else [],
+            )
             self._map = self._renderer.render(raw)
             self._map_key = key
         assert self._map is not None
@@ -462,6 +504,7 @@ class DemoController:
                     self.state = "paused"
             case "stop":
                 self._route, self.state, self.in_cleaning = [], "idle", "complete"
+                self.active_zone = self.goto_target = None
             case "dock":
                 self._go_dock()
             case "clean_rooms":
@@ -474,11 +517,14 @@ class DemoController:
                 # base px -> blocks (image rows are flipped)
                 rect = (min(x0, x1), H - 1 - max(y0, y1), max(x0, x1), H - 1 - min(y0, y1))
                 self._start([rect], "zoned_cleaning", "zone_clean_not_complete")
+                self.active_zone = (*_mm((rect[0], rect[1])), *_mm((rect[2], rect[3])))
             case "goto":
                 target = (float(params["x"]) / 4, H - 1 - float(params["y"]) / 4)
                 self._route, self._route_kind = _route(self.pos, target) + [target], "goto"
                 self.path = [self.pos]
                 self.state = "going_to_target"
+                self.goto_target = target
+                self.active_zone = None
             case "set_cleaning_mode":
                 self.fan, self.water, self.mop = PRESETS[params["mode"]]
             case "set_fan":

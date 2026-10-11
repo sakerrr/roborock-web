@@ -89,6 +89,17 @@ export interface MapFrame {
   mm: number;
 }
 
+/** A polyline in base-image px. */
+export type Polyline = [number, number][];
+
+export type ObstacleKind = "cable" | "pet_waste" | "shoes" | "clothes" | "pet" | "furniture" | "obstacle";
+
+export interface Obstacle extends Point {
+  kind: ObstacleKind;
+  label: string;
+  photo: boolean;
+}
+
 export interface MapPayload {
   available: true;
   unchanged?: undefined;
@@ -105,6 +116,14 @@ export interface MapPayload {
   restrictions: Restriction[];
   no_carpet_zones: number;
   frame?: MapFrame; // missing from servers older than the map editor
+  // Things drawn over the floor, in base px (missing from older servers).
+  path?: Polyline[];
+  mop_path?: Polyline[];
+  obstacles?: Obstacle[];
+  no_carpet?: Polyline[];
+  zones?: [number, number, number, number][]; // zones being cleaned right now
+  goto?: [number, number] | null;
+  goto_path?: Polyline[];
   maps: { flag: number; name: string }[];
   current_map: number | null;
 }

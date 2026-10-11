@@ -6,6 +6,7 @@ A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S
 - **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. You can choose 1–3 passes.
 - **Move and zoom** the map like Google Maps: two-finger swipe, pinch, drag.
 - **Three views**: the colour map, a **3D view** you can turn around, and a **floor plan** with room sizes.
+- **What the robot saw**: carpets, obstacles it spotted (cables, shoes, pet mess…), where it mopped, and its route, on every view.
 - **Edit the map**: invisible walls, no-go and no-mop zones, and merging, splitting or renaming rooms.
 - **Start / pause / resume / stop / dock / locate**.
 - **Cleaning mode**: Vacuum, Vac & Mop, Mop, Custom or SmartPlan. You can also set suction, water flow and mop route.
@@ -56,6 +57,17 @@ Switch views with **2D / 3D / Plan** above the map. The app remembers your choic
 - **2D**: the colour map, with the robot's path.
 - **3D**: your home with raised walls and furniture, the robot and dock as little models, and invisible walls and zones as tinted glass. **Drag to turn** it, swipe with two fingers to move, pinch to zoom, and click rooms to pick them. Zones, go-to and editing switch back to 2D. The 3D library ([three.js](https://threejs.org), MIT) is bundled into a separate file that only loads the first time you open 3D.
 - **Plan**: an architect-style drawing with walls, carpets and a 1 m grid. Each room shows its floor area, and the footer adds up the area of the whole home or of the rooms you picked.
+
+### What's on the map
+
+Every view shows what the robot reports with its map. Use the **Layers** button (above the zoom buttons) to switch things on or off:
+
+- **Cleaning path**: where it drove, plus a soft blue stripe where it mopped.
+- **Carpets**: hatched on the flat maps, slightly raised rugs in 3D.
+- **Obstacles it spotted**: cables, shoes, clothes, pet waste, pets and more. Hover for what it was; if the robot took a photo, it's in the Roborock app.
+- **Walls & zones**: invisible walls, no-go, no-mop and no-carpet zones.
+
+While it cleans a zone, the zone is outlined. When you send it to a spot, its target and planned route show up too.
 
 ## Editing the map
 

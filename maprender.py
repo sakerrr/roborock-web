@@ -62,8 +62,9 @@ BASE_COLORS: dict[SupportedColor, tuple[int, ...]] = {
     SupportedColor.VIRTUAL_WALLS: (239, 68, 68, 220),
 }
 
-# Walls and zones are drawn by the browser so they can be edited.
-BASE_DRAWABLES = [Drawable.PATH]
+# The image is just the floor plan. The path, walls, zones and obstacles go to the
+# browser as data, so every view can draw them and you can switch them off.
+BASE_DRAWABLES: list[Drawable] = []
 
 
 class _NoCarpetParser(RoborockMapDataParser):
@@ -111,6 +112,7 @@ class RenderedMap:
     robot_room: int | None = None
     restrictions: list[dict[str, Any]] = field(default_factory=list)
     no_carpet_zones: int = 0
+    things: dict[str, Any] = field(default_factory=dict)  # path, obstacles, zones…, in base px
     # Values needed to turn base-image pixels back into device millimetres.
     top: int = 0
     left: int = 0
@@ -148,6 +150,7 @@ class RenderedMap:
             "robot_room": self.robot_room,
             "restrictions": self.restrictions,
             "no_carpet_zones": self.no_carpet_zones,
+            **self.things,
             # base px <-> device mm: x_mm = (px / scale + left) * 50, y_mm = (top + height - 1 - py / scale) * 50
             "frame": {"top": self.top, "left": self.left, "height": self.img_height, "scale": SCALE, "mm": MM_PER_PIXEL},
         }
@@ -181,6 +184,7 @@ class MapRenderer:
             robot_room=base.vacuum_room,
             restrictions=_restrictions(base),
             no_carpet_zones=len(base.no_carpet_areas or []),
+            things=_things(base),
             top=dims.top,
             left=dims.left,
             img_height=dims.height,
@@ -230,6 +234,70 @@ def _stamp_carpets(mask: Image.Image, carpet: set[int] | None) -> None:
             r, g, _b, a = px[x, y]
             if a:
                 px[x, y] = (r, g, 1, a)
+
+
+# What the parser calls an obstacle -> (icon kind, label).
+OBSTACLE_KINDS = {
+    "cable": ("cable", "Cable"),
+    "extension cord": ("cable", "Extension cord"),
+    "pet waste": ("pet_waste", "Pet waste"),
+    "poop": ("pet_waste", "Pet waste"),
+    "shoes": ("shoes", "Shoes"),
+    "clothes": ("clothes", "Clothes"),
+    "fabric/paper balls": ("clothes", "Fabric or paper"),
+    "pet": ("pet", "Pet"),
+    "pedestal": ("furniture", "Pedestal"),
+    "weighting scale": ("furniture", "Scale"),
+    "dustpan": ("furniture", "Dustpan"),
+    "furniture with a crossbar": ("furniture", "Furniture"),
+}
+
+
+def _things(map_data: MapData) -> dict[str, Any]:
+    """Everything worth drawing on top of the floor, in base-image pixels."""
+    assert map_data.image is not None
+    dims = map_data.image.dimensions
+
+    def px(p: Point) -> list[float]:
+        q = p.to_img(dims)
+        return [round(q.x, 1), round(q.y, 1)]
+
+    def segments(path: Any) -> list[list[list[float]]]:
+        # Drop points closer than ~2 cm to the last one kept; paths can have thousands.
+        out = []
+        for seg in getattr(path, "path", None) or []:
+            kept: list[list[float]] = []
+            for p in seg:
+                q = px(p)
+                if not kept or abs(q[0] - kept[-1][0]) + abs(q[1] - kept[-1][1]) >= 1.5:
+                    kept.append(q)
+            if len(kept) > 1:
+                out.append(kept)
+        return out
+
+    obstacles = []
+    seen: set[tuple[int, int]] = set()
+    for o in [*(map_data.obstacles or []), *(map_data.obstacles_with_photo or [])]:
+        q = px(o)
+        key = (round(q[0]), round(q[1]))
+        if key in seen:
+            continue
+        seen.add(key)
+        kind, label = OBSTACLE_KINDS.get(o.details.description or "", ("obstacle", "Obstacle"))
+        obstacles.append({"x": q[0], "y": q[1], "kind": kind, "label": label, "photo": bool(o.details.photo_name)})
+
+    def area(a: Any) -> list[list[float]]:
+        return [px(Point(x, y)) for x, y in zip(a.as_list()[::2], a.as_list()[1::2])]
+
+    return {
+        "path": segments(map_data.path),
+        "mop_path": segments(map_data.mop_path),
+        "obstacles": obstacles,
+        "no_carpet": [area(a) for a in map_data.no_carpet_areas or []],
+        "zones": [[*px(Point(z.x0, z.y0)), *px(Point(z.x1, z.y1))] for z in map_data.zones or []],
+        "goto": px(map_data.goto) if map_data.goto else None,
+        "goto_path": segments(map_data.predicted_path),
+    }
 
 
 def _room_info(mask: Image.Image) -> dict[int, dict[str, float]]:

@@ -39,6 +39,9 @@
   --map3d-furniture: #e1e5ec;
   --map3d-floor: #ffffff;
   --map3d-ground: #d9e1ee;
+  --map3d-rug: #e8dcc6;
+  --carpet-tint: rgba(150, 110, 60, 0.1);
+  --carpet-hatch: rgba(150, 110, 60, 0.3);
   color-scheme: light;
 }
 
@@ -82,6 +85,9 @@
     --map3d-furniture: #2c3649;
     --map3d-floor: #a3abbb;
     --map3d-ground: #1a2232;
+    --map3d-rug: #5a5243;
+    --carpet-tint: rgba(230, 200, 150, 0.1);
+    --carpet-hatch: rgba(230, 200, 150, 0.28);
     color-scheme: dark;
   }
 }
@@ -462,3 +468,47 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .map3d-labels .room-label { pointer-events: auto; cursor: pointer; }
 .map-stage.is-3d .map-inner { visibility: hidden; }
 .map-stage.is-3d .map-zoom { z-index: 6; }
+
+/* things over the floor: path, carpets, obstacles, zones */
+.map-inner img.map-carpets { pointer-events: none; filter: var(--map-filter); }
+.map-inner.plan img.map-carpets { display: none; }
+.map-inner svg.map-info { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.map-info .path { fill: none; stroke: rgba(255, 255, 255, 0.92); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.map-info .mop-path { fill: none; stroke: rgba(76, 140, 240, 0.17); stroke-linejoin: round; stroke-linecap: round; }
+.map-inner.plan .map-info .path { stroke: var(--accent); stroke-opacity: 0.55; stroke-width: 1.2; }
+.map-inner.plan .map-info .mop-path { stroke: rgba(76, 140, 240, 0.1); }
+.map-info .no-carpet { fill: rgba(232, 163, 61, 0.12); stroke: #e8a33d; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.map-info .active-zone { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 5; vector-effect: non-scaling-stroke; }
+.map-info .goto-route { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 1 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.map-things { position: absolute; inset: 0; pointer-events: none; }
+.thing { position: absolute; transform: translate(-50%, -50%) scale(var(--inv, 1)); width: 24px; height: 24px; border-radius: 50%; background: var(--card); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2); display: grid; place-items: center; pointer-events: auto; cursor: help; }
+.thing svg { width: 14px; height: 14px; }
+.thing.cable { color: #d97706; }
+.thing.pet_waste { color: #b45309; }
+.thing.shoes { color: #7c3aed; }
+.thing.clothes { color: #db2777; }
+.thing.pet { color: #059669; }
+.thing.furniture { color: #64748b; }
+.thing.obstacle { color: #dc4146; }
+.thing.goto { background: var(--accent); color: #fff; cursor: default; }
+.map-inner.hide-path .map-info .path, .map-inner.hide-path .map-info .mop-path { display: none; }
+.map-inner.hide-carpets img.map-carpets { display: none; }
+.map-inner.hide-obstacles .thing:not(.goto) { display: none; }
+.map-inner.hide-restrictions #map-shapes, .map-inner.hide-restrictions .map-info .no-carpet { display: none; }
+.map-inner.editing #map-shapes { display: block !important; }
+.map3d-markers { position: absolute; inset: 0; pointer-events: none; }
+.map3d-markers .thing { transform: translate(-50%, -50%); }
+
+/* the Layers menu */
+.layers-pop { position: absolute; right: 62px; bottom: 14px; z-index: 7; min-width: 230px; padding: 6px; border-radius: 16px; background: var(--card); box-shadow: var(--shadow-lift); }
+.layers-pop .pop-title { font-size: 12px; font-weight: 700; color: var(--muted); padding: 6px 10px 4px; }
+.layers-pop label { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.layers-pop label:hover { background: var(--surface); }
+.layers-pop input { margin-left: auto; width: 16px; height: 16px; accent-color: var(--accent); }
+.layers-pop .sw { width: 24px; height: 16px; border-radius: 5px; flex: none; display: grid; place-items: center; }
+.layers-pop .sw.path { background: linear-gradient(transparent 6px, #fff 6px, #fff 9px, transparent 9px), rgba(76, 140, 240, 0.35); }
+.layers-pop .sw.carpets { background: repeating-linear-gradient(-45deg, rgba(150, 110, 60, 0.45) 0 2px, rgba(150, 110, 60, 0.12) 2px 5px); }
+.layers-pop .sw.obstacles { color: #d97706; background: var(--surface); }
+.layers-pop .sw.obstacles svg { width: 13px; height: 13px; }
+.layers-pop .sw.restrictions { background: rgba(229, 72, 77, 0.18); box-shadow: inset 0 0 0 1.5px #e5484d; }
+@media (max-width: 560px) { .layers-pop { right: 8px; bottom: 52px; } }

@@ -26,6 +26,14 @@ export interface EditState {
   drag: boolean;
 }
 
+/** Things you can show or hide on every map view. */
+export interface Layers {
+  path: boolean;
+  carpets: boolean;
+  obstacles: boolean;
+  restrictions: boolean;
+}
+
 export interface Pending {
   cleaning?: string;
   fan?: number;
@@ -44,6 +52,7 @@ export interface AppState {
   jobRooms: number[] | null; // rooms of the room clean in progress
   edit: EditState | null;
   viewMode: ViewMode;
+  layers: Layers;
   view: { s: number; tx: number; ty: number }; // 2D pan & zoom
   tool: Tool;
   zone: [number, number, number, number] | null; // base px
@@ -70,6 +79,15 @@ function savedViewMode(): ViewMode {
   }
 }
 
+function savedLayers(): Layers {
+  const all: Layers = { path: true, carpets: true, obstacles: true, restrictions: true };
+  try {
+    return { ...all, ...(JSON.parse(localStorage.getItem("layers") || "{}") as Partial<Layers>) };
+  } catch {
+    return all;
+  }
+}
+
 export const S: AppState = {
   auth: null,
   devices: [],
@@ -81,6 +99,7 @@ export const S: AppState = {
   jobRooms: null,
   edit: null,
   viewMode: savedViewMode(),
+  layers: savedLayers(),
   view: { s: 1, tx: 0, ty: 0 },
   tool: "rooms",
   zone: null,

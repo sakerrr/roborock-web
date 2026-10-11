@@ -98,6 +98,8 @@
             </div>
             <div class="map-stage" id="map-stage">
               <div class="map-zoom" id="map-zoom">
+                <button id="layers-btn" title="What's shown on the map" aria-label="Layers"><svg class="i"><use href="#i-layers"/></svg></button>
+                <span class="sep"></span>
                 <button data-zoom="in" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><svg class="i"><use href="#i-plus"/></svg></button>
                 <button data-zoom="out" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out"><svg class="i"><use href="#i-minus"/></svg></button>
                 <span class="sep"></span>
@@ -105,13 +107,23 @@
                 <button data-zoom="fit" id="zoom-fit" title="Fit whole map (0)" aria-label="Fit whole map"><svg class="i"><use href="#i-fit"/></svg></button>
               </div>
               <div class="edit-tools" id="edit-tools" hidden></div>
+              <div class="layers-pop" id="layers-pop" hidden>
+                <div class="pop-title">Show on the map</div>
+                <label><span class="sw path"></span>Cleaning path<input type="checkbox" data-layer="path"></label>
+                <label><span class="sw carpets"></span>Carpets<input type="checkbox" data-layer="carpets"></label>
+                <label><span class="sw obstacles"><svg class="i"><use href="#i-plug"/></svg></span>Obstacles it spotted<input type="checkbox" data-layer="obstacles"></label>
+                <label><span class="sw restrictions"></span>Walls &amp; zones<input type="checkbox" data-layer="restrictions"></label>
+              </div>
               <div class="map3d" id="map3d" hidden></div>
               <div class="map-empty" id="map-empty"><div class="spinner"></div>Loading map…</div>
               <div class="map-inner rooms" id="map-inner" hidden>
                 <img id="map-img" alt="Map of your home" draggable="false">
+                <img id="map-carpets" class="map-carpets" alt="" draggable="false">
                 <canvas id="map-sel"></canvas>
+                <svg class="map-info" id="map-info"></svg>
                 <svg class="map-shapes" id="map-shapes"></svg>
                 <svg class="map-draw" id="map-draw"></svg>
+                <div id="map-things" class="map-things"></div>
                 <div id="map-labels"></div>
                 <button class="marker shape-delete" id="shape-delete" data-act="edit-delete" title="Delete (⌫)" aria-label="Delete" hidden><svg class="i"><use href="#i-trash"/></svg></button>
                 <div class="marker dock-marker" id="dock-marker" hidden><svg class="i"><use href="#i-bolt"/></svg></div>
@@ -183,6 +195,11 @@
       <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
       <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></symbol>
       <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0z"/><path d="M12 17v5"/></symbol>
+      <symbol id="i-paw" viewBox="0 0 24 24"><circle cx="11" cy="4.5" r="2"/><circle cx="18" cy="8.5" r="2"/><circle cx="19.5" cy="15.5" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.05Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10z"/></symbol>
+      <symbol id="i-shoe" viewBox="0 0 24 24"><path d="M2 17h17a3 3 0 0 0 3-3v-.5a1.5 1.5 0 0 0-1.1-1.45L15 10.5l-2.2-4.4L9.5 7 7 5 2 6z"/><path d="M2 20.5h20"/></symbol>
+      <symbol id="i-shirt" viewBox="0 0 24 24"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></symbol>
       <symbol id="i-dock" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 17h8M9 7h6"/></symbol>
     </defs>
   </svg>

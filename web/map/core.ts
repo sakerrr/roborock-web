@@ -8,6 +8,7 @@ import { S, type Tool } from "../state";
 import type { MapPayload, Mask, Point } from "../types";
 import { copyRestrictions, editRoomClick, endEdit, renderEditFoot, renderShapes, syncInnerClasses } from "./editor";
 import { drawSvg, inner, mapImg, selCanvas, shapesSvg, stage } from "./elements";
+import { renderThings } from "./layers";
 import { applyView, clampView, isEditGesture, resetView } from "./panzoom";
 import { get3D, planImage, sync3D } from "./views";
 
@@ -53,6 +54,7 @@ export async function setMap(m: MapPayload): Promise<void> {
   inner.hidden = false;
   fitMap();
   renderMapSelect();
+  renderThings();
   refreshMapOverlays();
   renderMarkers();
   sync3D(true);

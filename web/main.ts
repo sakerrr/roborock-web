@@ -1,19 +1,28 @@
 // Entry point: global button handling and start-up.
 
-import { $, $$, closest, icon } from "./dom";
+import { $, $$, $opt, closest, icon } from "./dom";
 import { mapEmpty, refreshMapOverlays } from "./map/core";
 import { fitMap } from "./map/fit";
 import {
   clearEditPicks, deleteSelected, discardEdits, endEdit, mergeRooms, renameRoom, saveRestrictions,
   setEditMode, setEditTool, splitRoom, startEdit, undoEdit,
 } from "./map/editor";
-import { resetView } from "./map/panzoom";
-import { setViewMode, show3D, syncViewChrome } from "./map/views";
-import { doAction, renderActions, renderSkeletons, setModeValue } from "./panels";
+import { centerOnRobot, resetView } from "./map/panzoom";
+import { get3D, setViewMode, show3D, syncViewChrome } from "./map/views";
+import { setNotify } from "./notify";
+import { doAction, renderActions, renderSkeletons, renderStatus, setModeValue } from "./panels";
 import { logout, reconnect, refreshAuth, startLoops } from "./session";
 import { loadSettings, setChoice } from "./settings";
 import { S, type EditTool, type ViewMode } from "./state";
 import "./theme";
+
+// Bring the robot into view, wherever it is: switch to Home, then center on it.
+function showRobot(): void {
+  if (S.tab !== "home") ($opt<HTMLButtonElement>('[data-tab="home"]'))?.click();
+  const m3 = get3D();
+  if (S.viewMode === "3d" && m3) m3.centerOnRobot();
+  else centerOnRobot();
+}
 
 document.addEventListener("click", async (e) => {
   const t = closest<HTMLButtonElement>(e.target, "button");
@@ -68,6 +77,11 @@ document.addEventListener("click", async (e) => {
       return logout();
     case "reconnect":
       return reconnect(t);
+    case "show-robot":
+      return showRobot();
+    case "notify-on":
+      await setNotify(true);
+      return renderStatus();
     case "refresh-settings":
       return loadSettings();
     case "dismiss-update":

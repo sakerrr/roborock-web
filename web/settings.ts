@@ -5,6 +5,7 @@ import { $, $opt, errorMessage, esc, fmtArea, fmtDuration, fmtWhen, human, icon 
 import { OPT_LABEL } from "./labels";
 import { doAction } from "./panels";
 import { S } from "./state";
+import { notifyEnabled, notifySupported, setNotify } from "./notify";
 import { themeChoice } from "./theme";
 import type { Choice, Settings } from "./types";
 
@@ -105,6 +106,10 @@ export function renderSettings(): void {
     cards.push(`<div class="card"><div class="card-head"><h3 class="card-title">${icon("history")}History</h3></div>${hist}</div>`);
   }
 
+  if (notifySupported()) {
+    cards.push(`<div class="card"><div class="card-head"><h3 class="card-title">${icon("bell")}Notifications</h3></div>
+      ${row("alert", "When it needs help", "A desktop notification when it gets stuck or the dock needs attention, while this page is open", sw("notify", notifyEnabled()))}</div>`);
+  }
   cards.push(`<div class="card"><div class="card-head"><h3 class="card-title">${icon("sun")}Appearance</h3></div>
     <div class="row stack"><div class="row-main"><span class="row-icon">${icon("contrast")}</span><div><div class="row-title">Theme</div><div class="row-sub">Auto follows your Mac's light or dark setting</div></div></div>${themeChoice()}</div></div>`);
 
@@ -185,6 +190,10 @@ document.addEventListener("change", async (e) => {
   const action = t.dataset.switch ?? "";
   if (action === "dnd") {
     sendDnd();
+    return;
+  }
+  if (action === "notify") {
+    t.checked = await setNotify(t.checked);
     return;
   }
   const on = t.checked;

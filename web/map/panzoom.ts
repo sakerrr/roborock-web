@@ -120,7 +120,7 @@ export function resetView(animate = true): void {
   }
 }
 
-function centerOnRobot(): void {
+export function centerOnRobot(): void {
   const m = S.map;
   if (!m?.robot) {
     toast("The robot isn't on the map right now");

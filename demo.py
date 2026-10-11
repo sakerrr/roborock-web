@@ -334,6 +334,8 @@ class DemoController:
         self.pos = DOCKED_POS
         self.angle = 90.0
         self.history, self.path = _history()
+        self.error: str | None = None  # set with the demo_error action, to try the error help
+        self.dock_error: str | None = None
         self._fresh: tuple[tuple, dict[str, Any]] | None = None
         self._run_begin = 0.0
         self._route: list[tuple[float, float]] = []
@@ -393,7 +395,7 @@ class DemoController:
             self.battery = min(100, self.battery + dt * 0.5)
             self.state = "charging_complete" if self.battery >= 100 else "charging"
             return
-        if not self._route or self.state in ("paused", "idle", "error"):
+        if not self._route or self.state in ("paused", "idle", "error") or self.error:
             return
         step = SPEED * dt
         moved = 0.0
@@ -556,7 +558,7 @@ class DemoController:
             "job": self.in_cleaning != "complete", "job_type": self.in_cleaning,
             "battery": round(self.battery), "clean_time": int(self.clean_time),
             "clean_area": round(self.clean_area, 1), "clean_percent": None,
-            "error": None, "dock_error": None, "map_flag": 0,
+            "error": self.error, "dock_error": self.dock_error, "map_flag": 0,
             "mode": {
                 "cleaning": mode, "cleaning_options": list(PRESETS),
                 "fan": self.fan, "fan_options": [{"code": c, "name": n} for n, c in FAN],
@@ -702,7 +704,18 @@ class DemoController:
                 self.history.set_interval(0, int(params["room"]), int(params["days"]))
             case "reset_consumable":
                 self.consumables[params["key"]] = 0
-            case "locate" | "test_volume" | "run_routine" | "resolve_error" | "dry_start" | "dry_stop" | "spot" \
+            case "demo_error":
+                # Only in the demo: get stuck (or have the dock complain) to try the error help.
+                if params.get("dock"):
+                    self.dock_error = str(params.get("code") or "waste_water_tank_full")
+                else:
+                    self.error = str(params.get("code") or "wheels_suspended")
+                    self.state = "error"
+            case "resolve_error":
+                self.error = self.dock_error = None
+                if self.state == "error":
+                    self.state = "paused" if self._route else "idle"
+            case "locate" | "test_volume" | "run_routine" | "dry_start" | "dry_stop" | "spot" \
                     | "stop_wash" | "select_map":
                 pass
             case _:

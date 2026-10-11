@@ -4,7 +4,9 @@ import { api, devicePath } from "./api";
 import { $, $opt, busyBtn, esc, fmtArea, fmtDuration, human, icon, toast } from "./dom";
 import { DONE, HIDDEN_OPTS, MODE_LABEL, OPT_LABEL, STATE_LABEL, TANK_WARN } from "./labels";
 import { drawSelection, refreshMapOverlays } from "./map/core";
+import { errorHelp } from "./errors";
 import { freshJobChanged } from "./freshness";
+import { notifyEnabled, notifyProblem, notifySupported } from "./notify";
 import { loadSettings } from "./settings";
 import { S, type Pending } from "./state";
 import type { ModeOption, Status } from "./types";
@@ -24,8 +26,14 @@ export function setStatus(st: Status): void {
   const jobEnded = S.jobRooms && !st.job;
   const backOnline = S.status?.connected === false && st.connected !== false;
   const jobChanged = !!S.status && !!S.status.job !== !!st.job;
+  const problem = (s: Status | null) => (s ? `${s.error ?? ""}|${s.dock_error ?? ""}` : "");
+  const newProblem = !!S.status && problem(st) !== problem(S.status) && !!(st.error || st.dock_error);
   S.status = st;
   if (jobChanged) freshJobChanged(!!st.job);
+  if (newProblem) {
+    const h = errorHelp((st.error ?? st.dock_error)!, !st.error);
+    notifyProblem(`${st.name || "Robot"}: ${h.title}`, h.fix[0]);
+  }
   if (backOnline && S.tab === "settings") void loadSettings();
   if (jobEnded) {
     S.jobRooms = null;
@@ -40,6 +48,7 @@ export function setStatus(st: Status): void {
   renderMode();
   renderDock();
   $opt("#robot-marker .robot")?.classList.toggle("busy", st.phase === "cleaning");
+  $opt("#robot-marker")?.classList.toggle("stuck", !!st.error);
 }
 
 export function renderSkeletons(): void {
@@ -66,10 +75,27 @@ function statusSub(st: Status): string {
     case "docked":
       return (st.battery ?? 0) >= 100 ? "On the dock, ready to go" : "On the dock";
     case "error":
-      return human(st.error) || human(st.state);
+      return st.error ? "It stopped and needs a hand" : human(st.state);
     default:
       return "Ready when you are";
   }
+}
+
+/** What went wrong, in plain words, how to fix it, and where it happened. */
+function helpCard(code: string, dock: boolean): string {
+  const h = errorHelp(code, dock);
+  const room = !dock && S.map?.robot_room ? S.map.rooms.find((r) => r.id === S.map?.robot_room)?.name : undefined;
+  const offerNotify = notifySupported() && !notifyEnabled();
+  return `<div class="help-card${dock ? " dock" : ""}">
+    <div class="help-title">${icon("alert")}<span>${esc(h.title)}</span></div>
+    <p class="help-why">${esc(h.why)}${room ? `<br><span class="help-where">${icon("target", "i tiny")}Stopped in ${esc(room)}</span>` : ""}</p>
+    <ol class="help-steps">${h.fix.map((f) => `<li>${esc(f)}</li>`).join("")}</ol>
+    <div class="help-actions">
+      <button class="btn-soft" data-act="resolve_error">${icon("check")}I've fixed it</button>
+      ${dock ? "" : `<button class="btn-soft" data-act="locate">${icon("bell")}Beep</button><button class="btn-soft" data-act="show-robot">${icon("target")}Show</button>`}
+    </div>
+    ${offerNotify ? `<button class="link help-notify" data-act="notify-on">Get a desktop notification next time</button>` : ""}
+  </div>`;
 }
 
 function fanName(st: Status): string | null {
@@ -118,11 +144,8 @@ export function renderStatus(): void {
         : `<div class="stat"><b>${esc(fanName(st) || "–")}</b><span>Suction</span></div>`}
     </div>`;
   }
-  if (st.error) {
-    html += `<div class="banner">${icon("alert")}<span class="grow">${esc(human(st.error))}</span><button data-act="resolve_error">Resolved</button></div>`;
-  }
-  if (st.dock_error) {
-    html += `<div class="banner warn">${icon("alert")}<span class="grow">Dock: ${esc(human(st.dock_error))}</span><button data-act="resolve_error">Resolved</button></div>`;
+  for (const [code, dock] of [[st.error, false], [st.dock_error, true]] as const) {
+    if (code) html += helpCard(code, dock);
   }
   const d = st.dock;
   const warns = d
@@ -148,7 +171,7 @@ interface PrimaryAction {
 function primaryAction(st: Status): PrimaryAction {
   const ph = st.phase;
   if (ph === "cleaning" || ph === "returning") return { label: "Pause", icon: "pause", act: "pause" };
-  if (ph === "paused") return { label: "Resume", icon: "play", act: "resume" };
+  if (ph === "paused" || (ph === "error" && st.job)) return { label: "Resume", icon: "play", act: "resume" };
   if (S.tool === "rooms" && S.selected.length) {
     const n = S.selected.length;
     return { label: `Clean ${n} room${n > 1 ? "s" : ""}`, icon: "play", act: "clean_rooms", params: { rooms: S.selected, repeat: S.repeat } };

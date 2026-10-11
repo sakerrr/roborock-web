@@ -103,11 +103,6 @@ def create_app(demo: bool) -> FastAPI:
         await service.login(code)
         return service.auth_state()
 
-    @app.post("/api/auth/password")
-    async def login_password(email: str = Body(..., embed=True), password: str = Body(..., embed=True)):
-        await service.login_password(email, password)
-        return service.auth_state()
-
     @app.post("/api/reconnect")
     async def reconnect():
         await service.reconnect()

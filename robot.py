@@ -910,17 +910,6 @@ class RoborockService:
         email, client = self._pending
         await self._signed_in(email, client, await client.code_login_v4(code.strip()))
 
-    async def login_password(self, email: str, password: str) -> None:
-        """Sign in with the account's password: no email code, so Roborock's code limit doesn't apply.
-        The password goes to Roborock only; it's never stored or logged."""
-        email = email.strip()
-        if "@" not in email:
-            raise ValueError("Enter the email you use in the Roborock app")
-        if not password:
-            raise ValueError("Enter your Roborock password")
-        client = self._client(email)
-        await self._signed_in(email, client, await client.pass_login(password))
-
     async def _signed_in(self, email: str, client: RoborockApiClient, user_data: UserData) -> None:
         self._session = {
             "email": email,

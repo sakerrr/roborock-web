@@ -592,5 +592,3 @@ svg.i.tiny { width: 12px; height: 12px; }
 .code-note { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(236, 131, 90, 0.14); color: var(--text); font-size: 13.5px; line-height: 1.45; }
 #have-code { display: block; margin: 12px auto 0; }
 #resend-code, #change-email { display: block; margin: 10px auto 0; }
-#pw-password { margin-top: 10px; }
-.login .to-password, #to-code { display: block; margin: 10px auto 0; }

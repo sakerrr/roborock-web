@@ -27,7 +27,6 @@
           <div class="err" id="email-err"></div>
           <button class="btn-primary" type="submit">Send code</button>
           <button type="button" class="link" id="have-code">Already have a code?</button>
-          <button type="button" class="link to-password">Sign in with password instead</button>
         </form>
       </div>
       <div id="login-step-code" hidden>
@@ -40,18 +39,6 @@
           <button class="btn-primary" type="submit">Sign in</button>
           <button type="button" class="link" id="resend-code">Send a new code</button>
           <button type="button" class="link" id="change-email">Use a different email</button>
-          <button type="button" class="link to-password">Sign in with password instead</button>
-        </form>
-      </div>
-      <div id="login-step-password" hidden>
-        <h2>Sign in with password</h2>
-        <p>No email code needed. This works if your Roborock account has a password; you can set one in the Roborock app's account settings.</p>
-        <form id="password-form">
-          <input class="field" id="pw-email" type="email" autocomplete="username" placeholder="you@example.com" required>
-          <input class="field" id="pw-password" type="password" autocomplete="current-password" placeholder="Roborock password" required>
-          <div class="err" id="pw-err"></div>
-          <button class="btn-primary" type="submit">Sign in</button>
-          <button type="button" class="link" id="to-code">Use an email code instead</button>
         </form>
       </div>
       <div class="fine">Your session stays on this computer (in <code>data/session.json</code>). Nothing is sent anywhere except Roborock's own servers.</div>

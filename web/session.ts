@@ -33,22 +33,11 @@ export function checkForUpdate(auth: Auth | null): void {
   if (auth?.restart_needed && !S.updateDismissed) $("#update-banner").hidden = false;
 }
 
-let passwordMode = false;
-
 function showLogin(): void {
   const auth = S.auth;
   if (!auth) return;
   $("#app-view").hidden = true;
   $("#login-view").hidden = false;
-  $("#login-step-password").hidden = !passwordMode;
-  if (passwordMode) {
-    $("#login-step-email").hidden = true;
-    $("#login-step-code").hidden = true;
-    const email = $<HTMLInputElement>("#pw-email");
-    if (!email.value) email.value = auth.email || $<HTMLInputElement>("#email").value;
-    (email.value ? $<HTMLInputElement>("#pw-password") : email).focus();
-    return;
-  }
   const codeStep = auth.code_sent;
   $("#login-step-email").hidden = codeStep;
   $("#login-step-code").hidden = !codeStep;
@@ -117,37 +106,6 @@ $<HTMLButtonElement>("#resend-code").addEventListener("click", async (e) => {
     if (!S.auth.code_note) toast("New code sent. Check your inbox");
   } catch (err) {
     $("#code-err").textContent = errorMessage(err);
-  } finally {
-    busyBtn(btn, false);
-  }
-});
-
-// Signing in with the account password needs no email code, so Roborock's code limit doesn't apply.
-for (const link of document.querySelectorAll<HTMLButtonElement>(".to-password")) {
-  link.addEventListener("click", () => {
-    passwordMode = true;
-    showLogin();
-  });
-}
-
-$("#to-code").addEventListener("click", () => {
-  passwordMode = false;
-  showLogin();
-});
-
-$<HTMLFormElement>("#password-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const btn = $<HTMLButtonElement>("#password-form button[type=submit]");
-  const password = $<HTMLInputElement>("#pw-password");
-  $("#pw-err").textContent = "";
-  busyBtn(btn, true);
-  try {
-    await api<Auth>("/api/auth/password", { method: "POST", body: { email: $<HTMLInputElement>("#pw-email").value, password: password.value } });
-    password.value = "";
-    passwordMode = false;
-    await refreshAuth();
-  } catch (err) {
-    $("#pw-err").textContent = errorMessage(err);
   } finally {
     busyBtn(btn, false);
   }

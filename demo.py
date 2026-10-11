@@ -103,6 +103,20 @@ def _on_outer(room_at, x, y) -> bool:
 GRID = _grid()
 
 
+def _carpets() -> bytes:
+    """One byte per pixel, bit 1 = carpet: a living room rug and a bedroom rug."""
+    sub = bytearray(W * H)
+    for (x0, y0, x1, y1) in ((52, 12, 84, 34), (16, 86, 42, 104)):
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if GRID[y * W + x] & 7 == 7:
+                    sub[y * W + x] = 1
+    return bytes(sub)
+
+
+CARPETS = _carpets()
+
+
 def _mm(p: tuple[float, float]) -> tuple[int, int]:
     return int((LEFT + p[0]) * 50), int((TOP + p[1]) * 50)
 
@@ -125,10 +139,12 @@ def build_map(
     walls: list[tuple[int, ...]] = (),  # type: ignore[assignment]
     no_go: list[tuple[int, ...]] = (),  # type: ignore[assignment]
     no_mop: list[tuple[int, ...]] = (),  # type: ignore[assignment]
+    carpets: bytes = CARPETS,
 ) -> bytes:
     blocks = [
         _block(1, b"", struct.pack("<ii", *_mm(CHARGER))),
         _block(2, struct.pack("<iiii", TOP, LEFT, H, W), bytes(grid)),
+        _block(17, b"", carpets),
     ]
     for btype, items, fmt in ((10, walls, "<4H"), (9, no_go, "<8H"), (12, no_mop, "<8H")):
         if items:

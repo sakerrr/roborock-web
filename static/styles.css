@@ -27,6 +27,14 @@
   --mask-dim: 255, 255, 255;
   --mask-dim-a: 135;
   --map-filter: none;
+  --plan-paper: #fffefb;
+  --plan-carpet: #f4f0e7;
+  --plan-hatch: rgba(140, 115, 70, 0.22);
+  --plan-wall: #2b3340;
+  --plan-furniture: #dfe3e9;
+  --plan-grid: rgba(43, 51, 64, 0.07);
+  --plan-edge: rgba(43, 51, 64, 0.22);
+  --plan-ink: #2b3340;
   color-scheme: light;
 }
 
@@ -58,6 +66,14 @@
     --mask-dim: 26, 34, 49;
     --mask-dim-a: 165;
     --map-filter: brightness(0.84) saturate(0.9);
+    --plan-paper: #182032;
+    --plan-carpet: #1f2839;
+    --plan-hatch: rgba(225, 205, 160, 0.14);
+    --plan-wall: #d3dbe8;
+    --plan-furniture: #2c3649;
+    --plan-grid: rgba(211, 219, 232, 0.06);
+    --plan-edge: rgba(211, 219, 232, 0.2);
+    --plan-ink: #e6ebf3;
     color-scheme: dark;
   }
 }
@@ -417,3 +433,14 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .update-banner code { font-size: 12.5px; background: var(--surface); padding: 1px 5px; border-radius: 6px; }
 .update-banner button { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); flex: none; }
 .update-banner button:hover { background: var(--surface); }
+
+/* view modes */
+.head-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
+.view-modes button { min-width: 44px; }
+.map-inner.plan img { filter: none; image-rendering: pixelated; }
+.room-label .area { display: none; }
+.map-inner.plan .room-label { flex-direction: column; gap: 1px; padding: 5px 10px; background: transparent; box-shadow: none; backdrop-filter: none; color: var(--plan-ink); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; line-height: 1.15; }
+.map-inner.plan .room-label .area { display: block; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11px; opacity: 0.7; }
+.map-inner.plan .room-label .tick { display: none; }
+.map-inner.plan .room-label.sel { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18); }
+.map-inner.plan .room-label.sel .area { opacity: 0.85; }

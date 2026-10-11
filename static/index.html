@@ -71,7 +71,13 @@
         <div class="main">
           <div class="card" id="map-card">
             <div class="card-head">
-              <h3 class="card-title"><svg class="i"><use href="#i-map"/></svg><span id="map-title">Map</span></h3>
+              <div class="head-left">
+                <h3 class="card-title"><svg class="i"><use href="#i-map"/></svg><span id="map-title">Map</span></h3>
+                <div class="seg small view-modes" id="view-modes" aria-label="Map view">
+                  <button data-view="2d" class="active" title="Colour map">2D</button>
+                  <button data-view="plan" title="Floor plan with room sizes">Plan</button>
+                </div>
+              </div>
               <div class="head-tools" id="head-normal">
                 <select class="map-select" id="map-select" hidden></select>
                 <div class="map-tools" id="map-tools">

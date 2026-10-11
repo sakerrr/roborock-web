@@ -47,9 +47,13 @@ const DONE = {
 
 const S = {
   auth: null, devices: [], duid: null, status: null, map: null, mask: null,
-  selected: [], jobRooms: null, edit: null, view: { s: 1, tx: 0, ty: 0 }, tool: "rooms", zone: null, pin: null, drag: null, repeat: 1, hover: 0,
+  selected: [], jobRooms: null, edit: null, viewMode: savedViewMode(), view: { s: 1, tx: 0, ty: 0 }, tool: "rooms", zone: null, pin: null, drag: null, repeat: 1, hover: 0,
   settings: null, tab: "home", pending: {}, lastMapAt: 0, mapLoading: false, statusLoading: false,
 };
+
+function savedViewMode() {
+  try { return localStorage.getItem("view") || "2d"; } catch { return "2d"; }
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -533,7 +537,7 @@ async function setMap(m) {
   const [, mask] = await Promise.all([loadImg(m.base), decodeMask(m.mask)]);
   S.map = m;
   S.mask = mask;
-  $("#map-img").src = m.base;
+  $("#map-img").src = S.viewMode === "plan" ? planImage() : m.base;
   selCanvas.width = mask.w;
   selCanvas.height = mask.h;
   drawSvg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
@@ -599,7 +603,8 @@ function renderLabels() {
   const { width: w, height: h } = S.map;
   $("#map-labels").innerHTML = S.map.rooms.map((r) => {
     const sel = S.edit ? S.edit.mode === "rooms" && S.edit.rooms.includes(r.id) : S.tool === "rooms" && S.selected.includes(r.id);
-    return `<button class="room-label ${sel ? "sel" : ""}" data-room="${r.id}" style="left:${pct(r.x, w)};top:${pct(r.y, h)}">${icon("check", "i tick")}${esc(r.name)}</button>`;
+    const area = S.viewMode === "plan" && r.area ? `<span class="area">${fmtArea(r.area)}</span>` : "";
+    return `<button class="room-label ${sel ? "sel" : ""}" data-room="${r.id}" style="left:${pct(r.x, w)};top:${pct(r.y, h)}">${icon("check", "i tick")}<span class="nm">${esc(r.name)}</span>${area}</button>`;
   }).join("");
 }
 
@@ -666,10 +671,14 @@ function renderMapFoot() {
   if (S.edit) { renderEditFoot(); return; }
   const names = new Map(S.map.rooms.map((r) => [r.id, r.name]));
   let html;
+  const plan = S.viewMode === "plan";
+  const areaOf = (ids) => fmtArea(S.map.rooms.filter((r) => ids.includes(r.id)).reduce((sum, r) => sum + (r.area || 0), 0));
   if (S.tool === "rooms") {
     html = S.selected.length
-      ? `<span class="hint"><b style="color:var(--text)">${S.selected.map((id) => esc(names.get(id))).join(", ")}</b></span><button class="link" data-act="clear-sel">Clear</button>`
-      : `<span class="hint">Tap rooms to clean just those, or clean everywhere.</span>`;
+      ? `<span class="hint"><b style="color:var(--text)">${S.selected.map((id) => esc(names.get(id))).join(", ")}</b>${plan ? ` · ${areaOf(S.selected)}` : ""}</span><button class="link" data-act="clear-sel">Clear</button>`
+      : plan
+        ? `<span class="hint">Floor area ${areaOf(S.map.rooms.map((r) => r.id))} across ${S.map.rooms.length} rooms. Click rooms to clean just those.</span>`
+        : `<span class="hint">Tap rooms to clean just those, or clean everywhere.</span>`;
   } else if (S.tool === "zone") {
     if (S.zone) {
       const m = (v) => ((Math.abs(v) / S.map.scale) * 0.05).toFixed(1);
@@ -716,6 +725,130 @@ function setTool(tool) {
   applyView();
   refreshMapOverlays();
 }
+
+/* ---- view modes ---- */
+function setViewMode(mode) {
+  if (mode === S.viewMode) return;
+  S.viewMode = mode;
+  try { localStorage.setItem("view", mode); } catch { /* storage blocked */ }
+  syncViewChrome();
+  if (S.map) $("#map-img").src = mode === "plan" ? planImage() : S.map.base;
+  refreshMapOverlays();
+}
+
+function syncViewChrome() {
+  $$("#view-modes button").forEach((b) => b.classList.toggle("active", b.dataset.view === S.viewMode));
+  inner.classList.toggle("plan", S.viewMode === "plan");
+}
+
+// The floor plan is drawn here from the room mask: walls, floors, carpet hatching
+// and a 1 m grid, in the theme's colours. It only changes when the layout does.
+let planCache = { key: "", url: "" };
+function planImage() {
+  const t = (name) => cssVar(name);
+  const key = `${S.map.mask.length}:${S.map.mask.slice(-64)}:${S.map.width}:${t("--plan-paper")}`;
+  if (planCache.key === key) return planCache.url;
+
+  const { w, h, data } = S.mask;
+  const rgba = (v, fallback) => {
+    const m = (v || fallback).match(/\d+(\.\d+)?/g).map(Number);
+    return [m[0], m[1], m[2], Math.round((m[3] ?? 1) * 255)];
+  };
+  const paper = hexRgb(t("--plan-paper") || "#fffefb").concat(255);
+  const carpet = hexRgb(t("--plan-carpet") || "#f3efe6").concat(255);
+  const wall = hexRgb(t("--plan-wall") || "#2b3340").concat(255);
+  const furniture = hexRgb(t("--plan-furniture") || "#dfe3e9").concat(255);
+  const edge = rgba(t("--plan-edge"), "rgba(43,51,64,.22)");
+
+  // 1. one pixel per 5 cm block
+  const small = document.createElement("canvas");
+  small.width = w;
+  small.height = h;
+  const sctx = small.getContext("2d");
+  const img = sctx.createImageData(w, h);
+  const out = img.data;
+  const rugs = document.createElement("canvas");
+  rugs.width = w;
+  rugs.height = h;
+  const rctx = rugs.getContext("2d");
+  const rugImg = rctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (!data[i + 3]) continue;
+      const room = data[i], kind = data[i + 1], isCarpet = data[i + 2];
+      let c = kind === 1 ? wall : kind === 2 ? furniture : isCarpet ? carpet : paper;
+      // A soft line where two rooms meet without a wall in between.
+      if (room) {
+        const right = x + 1 < w ? data[i + 4] : room;
+        const down = y + 1 < h ? data[i + w * 4] : room;
+        if ((right && right !== room) || (down && down !== room)) c = blend(c, edge);
+      }
+      out.set(c, i);
+      if (isCarpet && kind !== 1) rugImg.data.set([0, 0, 0, 255], i);
+    }
+  }
+  sctx.putImageData(img, 0, 0);
+  rctx.putImageData(rugImg, 0, 0);
+
+  // 2. scale up with crisp edges
+  const big = document.createElement("canvas");
+  big.width = S.map.width;
+  big.height = S.map.height;
+  const ctx = big.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, 0, 0, big.width, big.height);
+
+  // 3. diagonal hatching on carpets
+  const hatch = document.createElement("canvas");
+  hatch.width = big.width;
+  hatch.height = big.height;
+  const hctx = hatch.getContext("2d");
+  hctx.imageSmoothingEnabled = false;
+  hctx.drawImage(rugs, 0, 0, big.width, big.height);
+  hctx.globalCompositeOperation = "source-in";
+  hctx.strokeStyle = t("--plan-hatch") || "rgba(120,100,70,.2)";
+  hctx.lineWidth = 1.5;
+  hctx.beginPath();
+  for (let d = -big.height; d < big.width; d += 9) {
+    hctx.moveTo(d, big.height);
+    hctx.lineTo(d + big.height, 0);
+  }
+  hctx.stroke();
+  ctx.drawImage(hatch, 0, 0);
+
+  // 4. a 1 m grid, aligned to the robot's coordinates, only on mapped floor
+  const f = S.map.frame;
+  if (f) {
+    const step = (1000 / f.mm) * f.scale; // px per metre
+    const blocksPerM = 1000 / f.mm;
+    const x0 = (Math.ceil(f.left / blocksPerM) * blocksPerM - f.left) * f.scale;
+    const y0 = ((f.top + f.height) % blocksPerM) * f.scale;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.strokeStyle = t("--plan-grid") || "rgba(43,51,64,.07)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = x0; x < big.width; x += step) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, big.height); }
+    for (let y = y0; y < big.height; y += step) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(big.width, Math.round(y) + 0.5); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  planCache = { key, url: big.toDataURL("image/png") };
+  return planCache.url;
+}
+
+function blend(base, over) {
+  const a = over[3] / 255;
+  return [0, 1, 2].map((k) => Math.round(base[k] * (1 - a) + over[k] * a)).concat(255);
+}
+
+// Follow the system theme while the plan is showing.
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (S.map && S.viewMode === "plan") $("#map-img").src = planImage();
+  if (S.mask) drawSelection();
+});
 
 /* ---- pan & zoom, Google Maps style ----
    Drag moves the map at any zoom (with a little glide on release), pinch or a
@@ -1168,6 +1301,7 @@ function renderEditChrome() {
   const e = S.edit;
   $("#head-normal").hidden = !!e;
   $("#head-edit").hidden = !e;
+  $("#view-modes").hidden = !!e;
   $("#map-title").textContent = e ? "Edit map" : "Map";
   $("#map-card").classList.toggle("is-editing", !!e);
   const tools = $("#edit-tools");
@@ -1687,6 +1821,7 @@ document.addEventListener("click", async (e) => {
     window.scrollTo({ top: 0 });
     return;
   }
+  if (t.dataset.view) return setViewMode(t.dataset.view);
   if (t.dataset.etool) return setEditTool(t.dataset.etool);
   if (t.dataset.emode) return setEditMode(t.dataset.emode);
   if (t.dataset.repeat) {
@@ -1766,5 +1901,6 @@ $("#device-select").addEventListener("change", (e) => {
 });
 
 /* ---------------- boot ---------------- */
+syncViewChrome();
 $$("[data-icon]").forEach((el) => (el.innerHTML = icon(el.dataset.icon)));
 refreshAuth();

@@ -2,9 +2,13 @@
 
 The stock renderer in python-roborock uses the dark "Roborock blue" palette.
 We parse the same bytes with our own palette so the map fits an airy UI, and
-render a second, tiny image where every room pixel encodes its room id in the
-red channel. The browser uses that mask to hit-test taps and to draw
-selection highlights without any geometry guesswork.
+render a second, tiny image (one pixel per 5 cm block) that the browser uses
+for hit-testing, selection highlights, the floor plan and the 3D view:
+
+    red    room id (1-31), 0 when the pixel isn't part of a room
+    green  what a non-room pixel is: 1 wall, 2 furniture/obstacle, 3 open floor
+    blue   1 where the robot detected carpet
+    alpha  0 outside the mapped area
 """
 
 from __future__ import annotations
@@ -77,7 +81,15 @@ def _base_parser() -> RoborockMapDataParser:
 
 
 def _mask_parser() -> RoborockMapDataParser:
-    colors = {c: CLEAR for c in SupportedColor}
+    colors: dict[SupportedColor, tuple[int, ...]] = {c: CLEAR for c in SupportedColor}
+    colors.update({
+        SupportedColor.MAP_WALL: (0, 1, 0, 255),
+        SupportedColor.MAP_WALL_V2: (0, 1, 0, 255),
+        SupportedColor.GREY_WALL: (0, 2, 0, 255),
+        SupportedColor.MAP_INSIDE: (0, 3, 0, 255),
+        SupportedColor.SCAN: (0, 3, 0, 255),
+        SupportedColor.UNKNOWN: (0, 3, 0, 255),
+    })
     palette = ColorsPalette(colors, {})
     # Room numbers are 5 bits (1..31); encode each id in the red channel.
     for i in range(0, 32):
@@ -93,7 +105,7 @@ class RenderedMap:
     height: int
     base_png: bytes
     mask_png: bytes
-    rooms: dict[int, dict[str, float]]  # room id -> label point (base px)
+    rooms: dict[int, dict[str, float]]  # room id -> label point (base px), area (m²), size (m)
     robot: dict[str, float] | None
     charger: dict[str, float] | None
     robot_room: int | None = None
@@ -121,7 +133,7 @@ class RenderedMap:
         def room(rid: int, p: dict[str, float]) -> dict[str, Any]:
             original = originals.get(rid) or f"Room {rid}"
             name = names.get(rid) or original
-            return {"id": rid, "name": name, "original": original, "nickname": name != original, "x": p["x"], "y": p["y"]}
+            return {"id": rid, "name": name, "original": original, "nickname": name != original, **p}
 
         return {
             "version": self.payload_version(names),
@@ -155,6 +167,7 @@ class MapRenderer:
 
         base_img: Image.Image = base.image.data
         mask_img: Image.Image = mask.image.data if mask.image is not None else Image.new("RGBA", (1, 1))
+        _stamp_carpets(mask_img, mask.carpet_map)
 
         return RenderedMap(
             version=hashlib.sha1(raw).hexdigest()[:12],
@@ -162,7 +175,7 @@ class MapRenderer:
             height=base_img.height,
             base_png=_png(base_img),
             mask_png=_png(mask_img),
-            rooms=_room_labels(mask_img),
+            rooms=_room_info(mask_img),
             robot=_point(base, base.vacuum_position, with_angle=True),
             charger=_point(base, base.charger),
             robot_room=base.vacuum_room,
@@ -205,26 +218,47 @@ def _restrictions(map_data: MapData) -> list[dict[str, Any]]:
     return out
 
 
-def _room_labels(mask: Image.Image) -> dict[int, dict[str, float]]:
-    """Pick a label point inside each room: the room pixel nearest its centroid."""
+def _stamp_carpets(mask: Image.Image, carpet: set[int] | None) -> None:
+    """Mark carpet pixels in the mask's blue channel (indices count rows from the bottom)."""
+    if not carpet:
+        return
+    px = mask.load()
     w, h = mask.size
-    data = mask.getdata()
-    sums: dict[int, list[float]] = {}
+    for idx in carpet:
+        x, y = idx % w, h - 1 - idx // w
+        if 0 <= y < h:
+            r, g, _b, a = px[x, y]
+            if a:
+                px[x, y] = (r, g, 1, a)
+
+
+def _room_info(mask: Image.Image) -> dict[int, dict[str, float]]:
+    """Label point, floor area and bounding size for each room.
+
+    The label goes on the room pixel nearest the room's centroid, so it always
+    lands inside the room even for L-shaped ones.
+    """
+    w, _h = mask.size
+    block_m = MM_PER_PIXEL / 1000
     pixels: dict[int, list[tuple[int, int]]] = {}
+    # getdata() is deprecated in newer Pillow in favour of get_flattened_data().
+    data = mask.get_flattened_data() if hasattr(mask, "get_flattened_data") else mask.getdata()
     for idx, (r, _g, _b, a) in enumerate(data):
-        if a == 0 or r == 0:
+        if a and r:
+            pixels.setdefault(r, []).append((idx % w, idx // w))
+    info: dict[int, dict[str, float]] = {}
+    for rid, pts in pixels.items():
+        if len(pts) < 20:  # specks, not rooms
             continue
-        x, y = idx % w, idx // w
-        s = sums.setdefault(r, [0.0, 0.0, 0.0])
-        s[0] += x
-        s[1] += y
-        s[2] += 1
-        pixels.setdefault(r, []).append((x, y))
-    labels: dict[int, dict[str, float]] = {}
-    for rid, (sx, sy, n) in sums.items():
-        if n < 20:  # specks, not rooms
-            continue
-        cx, cy = sx / n, sy / n
-        bx, by = min(pixels[rid], key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
-        labels[rid] = {"x": (bx + 0.5) * SCALE, "y": (by + 0.5) * SCALE}
-    return labels
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        cx, cy = sum(xs) / len(pts), sum(ys) / len(pts)
+        bx, by = min(pts, key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
+        info[rid] = {
+            "x": (bx + 0.5) * SCALE,
+            "y": (by + 0.5) * SCALE,
+            "area": round(len(pts) * block_m * block_m, 1),
+            "w": round((max(xs) - min(xs) + 1) * block_m, 1),
+            "h": round((max(ys) - min(ys) + 1) * block_m, 1),
+        }
+    return info

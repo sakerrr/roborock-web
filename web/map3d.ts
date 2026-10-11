@@ -11,9 +11,9 @@ import type { MapPayload, Mask, Point, Polyline, RestrictionType } from "./types
 
 const WALL_H = 11; // 55 cm: low enough to see into rooms from most angles
 const FURNITURE_H = 6;
-const RUG_H = 0.35; // carpets sit just proud of the floor
+const RUG_H = 0.6; // carpets stand a little proud of the floor
 const PATH_Y = RUG_H + 0.08;
-const MOP_WIDTH = 6; // the mop pads clean a strip about 30 cm wide
+const MOP_WIDTH = 3; // mopped strip, drawn narrower than the pads so the map stays readable
 const ROBOT_R = 3.5; // the robot is about 35 cm across
 const ROBOT_H = 2;
 const MIN_PITCH = 0.08; // radians from straight down
@@ -358,7 +358,7 @@ export class Map3D {
       const mat = new THREE.MeshBasicMaterial({
         color: colour[it.type],
         transparent: true,
-        opacity: it.type === "wall" ? 0.55 : 0.22,
+        opacity: it.type === "wall" ? 0.72 : 0.32,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -395,10 +395,10 @@ export class Map3D {
     const world = (line: Polyline): Pt[] => line.map(([x, y]): Pt => [x / this.scale - this.W / 2, y / this.scale - this.H / 2]);
     const flat = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
-    const mop = flat(0x5b9bf0, 0.2);
-    const vac = flat(0xffffff, 0.92);
+    const mop = flat(0xffffff, 0.32);
+    const vac = flat(0xffffff, 0.95);
     for (const line of m.mop_path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), MOP_WIDTH, PATH_Y - 0.02), mop));
-    for (const line of m.path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), 0.45, PATH_Y), vac));
+    for (const line of m.path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), 0.3, PATH_Y), vac));
 
     const outline = (pts: Pt[], color: number, fill: number, group: THREE.Group) => {
       const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -411,7 +411,7 @@ export class Map3D {
       );
       group.add(area, edge);
     };
-    for (const area of m.no_carpet ?? []) outline(world(area), 0xe8a33d, 0.16, this.noCarpetGroup);
+    for (const area of m.no_carpet ?? []) outline(world(area), 0xe0900f, 0.26, this.noCarpetGroup);
     const accent = new THREE.Color(css("--accent", "#4c7df0")).getHex();
     for (const [x0, y0, x1, y1] of m.zones ?? []) {
       outline(world([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]), accent, 0.14, this.infoGroup);

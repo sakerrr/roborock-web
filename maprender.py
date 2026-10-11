@@ -31,29 +31,30 @@ SCALE = 4
 MM_PER_PIXEL = 50  # Roborock map pixels are 50mm
 CLEAR = (0, 0, 0, 0)
 
-# Soft pastel rooms; walls a quiet slate.
+# Lively earth tones for rooms (neighbouring room ids get clearly different
+# hues); walls a warm charcoal, open floor and furniture warm neutrals.
 ROOM_PALETTE: list[tuple[int, int, int]] = [
-    (203, 223, 247),
-    (209, 236, 221),
-    (250, 225, 204),
-    (229, 219, 248),
-    (248, 214, 222),
-    (208, 236, 240),
-    (245, 236, 200),
-    (220, 228, 240),
-    (235, 222, 210),
-    (214, 232, 205),
+    (214, 132, 96),  # terracotta
+    (139, 178, 125),  # sage
+    (222, 176, 84),  # ochre
+    (104, 158, 154),  # muted teal
+    (205, 128, 122),  # clay
+    (168, 172, 96),  # olive
+    (229, 196, 140),  # sand
+    (150, 112, 132),  # heather
+    (194, 108, 78),  # rust
+    (176, 150, 124),  # taupe
 ]
 
 BASE_COLORS: dict[SupportedColor, tuple[int, ...]] = {
     SupportedColor.MAP_OUTSIDE: CLEAR,
-    SupportedColor.MAP_INSIDE: (232, 236, 242, 255),
-    SupportedColor.SCAN: (232, 236, 242, 255),
-    SupportedColor.NEW_DISCOVERED_AREA: (232, 236, 242, 255),
-    SupportedColor.MAP_WALL: (112, 126, 148, 255),
-    SupportedColor.MAP_WALL_V2: (112, 126, 148, 255),
-    SupportedColor.GREY_WALL: (176, 186, 201, 255),
-    SupportedColor.UNKNOWN: (210, 215, 222, 255),
+    SupportedColor.MAP_INSIDE: (236, 230, 220, 255),
+    SupportedColor.SCAN: (236, 230, 220, 255),
+    SupportedColor.NEW_DISCOVERED_AREA: (236, 230, 220, 255),
+    SupportedColor.MAP_WALL: (92, 86, 80, 255),
+    SupportedColor.MAP_WALL_V2: (92, 86, 80, 255),
+    SupportedColor.GREY_WALL: (196, 184, 168, 255),
+    SupportedColor.UNKNOWN: (214, 206, 194, 255),
     SupportedColor.PATH: (255, 255, 255, 235),
     SupportedColor.NO_GO_ZONES: (239, 68, 68, 40),
     SupportedColor.NO_GO_ZONES_OUTLINE: (239, 68, 68, 190),

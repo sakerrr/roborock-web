@@ -22,7 +22,7 @@ export const OBSTACLE_ICON: Record<ObstacleKind, string> = {
   obstacle: "alert",
 };
 
-const MOP_WIDTH_M = 0.3; // the mop pads clean a strip about this wide
+const MOP_WIDTH_M = 0.15; // drawn narrower than the real mop pads so the map stays readable
 
 const points = (line: Polyline) => line.map(([x, y]) => `${x},${y}`).join(" ");
 
@@ -112,13 +112,13 @@ function carpetImage(): string {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(small, 0, 0, big.width, big.height);
   ctx.globalCompositeOperation = "source-in";
-  ctx.fillStyle = cssVar("--carpet-tint") || "rgba(150,110,60,.10)";
+  ctx.fillStyle = cssVar("--carpet-tint") || "rgba(255,248,235,.3)";
   ctx.fillRect(0, 0, big.width, big.height);
   ctx.globalCompositeOperation = "source-atop";
-  ctx.strokeStyle = cssVar("--carpet-hatch") || "rgba(150,110,60,.32)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = cssVar("--carpet-hatch") || "rgba(80,52,24,.45)";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let d = -big.height; d < big.width; d += 8) {
+  for (let d = -big.height; d < big.width; d += 7) {
     ctx.moveTo(d, big.height);
     ctx.lineTo(d + big.height, 0);
   }

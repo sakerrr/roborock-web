@@ -77,6 +77,7 @@
                   <button data-view="2d" class="active" title="Colour map">2D</button>
                   <button data-view="3d" title="Rotate around your home in 3D">3D</button>
                   <button data-view="plan" title="Floor plan with room sizes">Plan</button>
+                  <button data-view="fresh" title="When each room and spot was last cleaned">Freshness</button>
                 </div>
               </div>
               <div class="head-tools" id="head-normal">
@@ -96,6 +97,7 @@
                 <button class="btn-soft" data-act="edit-done">Done</button>
               </div>
             </div>
+            <div class="map-body">
             <div class="map-stage" id="map-stage">
               <div class="map-zoom" id="map-zoom">
                 <button id="layers-btn" title="What's shown on the map" aria-label="Layers"><svg class="i"><use href="#i-layers"/></svg></button>
@@ -129,6 +131,9 @@
                 <div class="marker dock-marker" id="dock-marker" hidden><svg class="i"><use href="#i-bolt"/></svg></div>
                 <div class="marker" id="robot-marker" hidden><div class="robot"><span class="nose"></span></div></div>
               </div>
+              <div class="fresh-tip" id="fresh-tip" hidden></div>
+            </div>
+            <aside class="fresh-panel" id="fresh-panel" hidden></aside>
             </div>
             <div class="map-foot" id="map-foot"></div>
           </div>

@@ -121,6 +121,10 @@ def create_app(demo: bool) -> FastAPI:
     async def settings(duid: str):
         return await (await ctrl(duid)).settings()
 
+    @app.get("/api/devices/{duid}/freshness")
+    async def freshness(duid: str):
+        return await (await ctrl(duid)).freshness()
+
     @app.post("/api/devices/{duid}/action")
     async def action(duid: str, body: dict[str, Any] = Body(...)):
         name = body.pop("action", None)

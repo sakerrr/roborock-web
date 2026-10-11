@@ -13,6 +13,7 @@ import time
 from collections import deque
 from typing import Any
 
+from history import History, Run, freshness, grid_from_lines
 from maprender import MapRenderer, RenderedMap
 from robot import RoomNames, build_restriction_payload
 
@@ -186,7 +187,33 @@ def _room_of(p: tuple[float, float]) -> int | None:
 
 
 def _route(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, float]]:
-    """Walk through door points from a's room to b's room."""
+    """Walk through door points from a's room to b's room, around the furniture."""
+    pts = _doors(a, b)
+    out: list[tuple[float, float]] = []
+    for p, q in zip([a, *pts], pts):
+        out += _detour(p, q) + [q]
+    return out
+
+
+def _detour(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, float]]:
+    """Corners to drive round when the straight line from a to b crosses furniture."""
+    for ex0, ey0, ex1, ey1 in UNREACHABLE:
+        x0, y0, x1, y1 = ex0 - 3, ey0 - 3, ex1 + 3, ey1 + 3  # keep the swath off it too
+        steps = max(1, int(math.dist(a, b) * 2))
+        if not any(x0 < a[0] + (b[0] - a[0]) * i / steps < x1 and y0 < a[1] + (b[1] - a[1]) * i / steps < y1
+                   for i in range(steps + 1)):
+            continue
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        sides: dict[bool, list[tuple[float, float]]] = {True: [], False: []}
+        for c in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+            sides[dx * (c[1] - a[1]) - dy * (c[0] - a[0]) > 0].append(c)
+        # Go round on whichever side is shorter, corners in the order you meet them.
+        ways = [sorted(cs, key=lambda c: (c[0] - a[0]) * dx + (c[1] - a[1]) * dy) for cs in sides.values() if cs]
+        return min(ways, key=lambda w: sum(math.dist(p, q) for p, q in zip([a, *w], [*w, b])))
+    return []
+
+
+def _doors(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, float]]:
     ra, rb = _room_of(a), _room_of(b)
     if ra is None or rb is None or ra == rb:
         return [b]
@@ -207,29 +234,91 @@ def _route(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, 
     return list(reversed(pts))
 
 
-def _serpentine(rect: tuple[float, float, float, float], step: float = 4) -> list[tuple[float, float]]:
+# Spots the robot can't get to: under the bed, the sofa and the kitchen island, the office desk.
+UNREACHABLE: list[tuple[int, int, int, int]] = [(4, 96, 28, 120), (20, 46, 58, 54), (118, 22, 146, 30), (148, 102, 166, 120)]
+
+
+def _lane(x0: float, x1: float, a: float, b: float, y: float) -> list[tuple[float, float]]:
+    """One left-to-right lane from a to b at height y, inside a room spanning x0..x1, that
+    stops short of what the robot can't reach by a wall and drives around the rest."""
+    pts: list[tuple[float, float]] = []
+    for ex0, ey0, ex1, ey1 in sorted(UNREACHABLE):
+        if not (ey0 - 3 < y < ey1 + 3 and ex0 < b and ex1 > a):
+            continue
+        if ex0 <= x0:  # against the left wall: start past it
+            a = max(a, ex1 + 3)
+        elif ex1 >= x1:  # against the right wall: stop before it
+            b = min(b, ex0 - 3)
+        elif ex0 - 3 > a:  # in the open: go round, on the nearer side
+            yd = ey1 + 3 if ey1 - y < y - ey0 else ey0 - 3
+            pts += [(a, y), (ex0 - 3, y), (ex0 - 3, yd), (ex1 + 3, yd), (ex1 + 3, y)]
+            a = ex1 + 3
+    return pts + [(a, y), (b, y)] if b > a else pts
+
+
+def _lanes(rect: tuple[float, float, float, float], step: float = 4) -> list[tuple[float, float]]:
+    """Back-and-forth lanes over a room, the way the robot cleans one."""
     x0, y0, x1, y1 = rect
     pts: list[tuple[float, float]] = []
     y, flip = y0 + 3, False
     while y <= y1 - 3:
-        row = [(x0 + 3, y), (x1 - 3, y)]
+        row = _lane(x0, x1, x0 + 3, x1 - 3, y)
         pts.extend(reversed(row) if flip else row)
         y += step
         flip = not flip
     return pts
 
 
-def _last_run() -> list[tuple[float, float]]:
-    """A finished deep clean, so the demo map shows a path from the start like a real
-    one does: an edge run round each room, then lanes one way and across (Deep+)."""
+def _clean_path(rooms: list[int]) -> list[tuple[float, float]]:
+    """A whole run: from the dock through the rooms, lane by lane, and back."""
     path: list[tuple[float, float]] = [DOCKED_POS]
-    for _, (x0, y0, x1, y1) in ROOMS.values():
-        edge = [(x0 + 2.0, y0 + 2.0), (x1 - 2.0, y0 + 2.0), (x1 - 2.0, y1 - 2.0), (x0 + 2.0, y1 - 2.0), (x0 + 2.0, y0 + 2.0)]
-        lanes = _serpentine((x0, y0, x1, y1), 3)
-        across = [(x, y) for y, x in _serpentine((y0, x0, y1, x1), 3)]
-        for leg in (edge, lanes, across):
-            path += _route(path[-1], leg[0]) + leg
+    for rid in rooms:
+        lanes = _lanes(ROOMS[rid][1])
+        if lanes:
+            path += _route(path[-1], lanes[0]) + lanes
     return path + _route(path[-1], DOCKED_POS) + [DOCKED_POS]
+
+
+def _grid_lines(path: list[tuple[float, float]]) -> list[list[tuple[float, float]]]:
+    """Demo blocks (y up) to map grid blocks (y down)."""
+    return [[(x, H - 1 - y) for x, y in path]]
+
+
+def _area(rooms: list[int]) -> float:
+    return round(sum((r[2] - r[0]) * (r[3] - r[1]) for r in (ROOMS[i][1] for i in rooms)) * 0.0025, 1)
+
+
+# The last three weeks, newest first: (hours ago, rooms, mopped). The kitchen gets mopped
+# most days; the office and the bedroom have been left a while, so they're due.
+HISTORY: list[tuple[float, list[int], bool]] = [
+    (3, [17], True), (27, [16, 20], False), (50, [17], True), (98, [16, 20, 19], True),
+    (122, [17], True), (146, [21, 20], False), (170, [17, 16], False), (218, [18, 19], True),
+    (242, [17], True), (266, [16, 20, 21], False), (314, [17, 19], True), (362, [16, 17, 20, 21, 19], True),
+    (386, [17], True), (434, [16, 17, 20], False), (482, [16, 17, 20, 18, 19, 21], True),
+]
+INTERVALS = {17: 2, 16: 3, 20: 3, 21: 3, 18: 7, 19: 7}  # days between cleans, per room
+
+
+def _history() -> tuple[History, list[tuple[float, float]]]:
+    """Made-up history for the demo, plus the path of its last run (which the map shows)."""
+    history = History(None)
+    now = time.time()
+    last: list[tuple[float, float]] = []
+    for hours, rooms, mopped in reversed(HISTORY):
+        last = _clean_path(rooms)
+        # Only the lanes count as cleaning; driving between rooms doesn't.
+        lines = [line for rid in rooms for line in _grid_lines(_lanes(ROOMS[rid][1]))]
+        area = _area(rooms)
+        duration = int(area * 75)  # about 1¼ minutes per m²
+        end = int(now - hours * 3600)
+        history.add(Run(
+            id=f"demo-{end}", begin=end - duration, end=end, duration=duration, area=area, complete=True,
+            map_flag=0, source="demo", grid=grid_from_lines(lines, lines if mopped else [], LEFT, TOP + H - 1, W, H),
+        ))
+    history.created = history.runs[0].begin
+    for rid, days in INTERVALS.items():
+        history.set_interval(0, rid, days)
+    return history, last
 
 
 class DemoController:
@@ -244,7 +333,9 @@ class DemoController:
         self.fan, self.water, self.mop = PRESETS["vac_and_mop"]
         self.pos = DOCKED_POS
         self.angle = 90.0
-        self.path: list[tuple[float, float]] = _last_run()
+        self.history, self.path = _history()
+        self._fresh: tuple[tuple, dict[str, Any]] | None = None
+        self._run_begin = 0.0
         self._route: list[tuple[float, float]] = []
         self._route_kind = ""
         self._last_tick = time.monotonic()
@@ -340,19 +431,31 @@ class DemoController:
         elif self._route_kind == "goto":
             self.state = "idle"
         else:
+            self._record_run()
             self._go_dock()
+
+    def _record_run(self) -> None:
+        """Keep the run that just finished, like the real app does."""
+        end = int(time.time())
+        lines = _grid_lines(self.path)
+        self.history.add(Run(
+            id=f"demo-{end}", begin=int(self._run_begin), end=end, duration=int(self.clean_time),
+            area=round(self.clean_area, 1), complete=True, map_flag=0, source="demo",
+            grid=grid_from_lines(lines, lines if self.water != 200 else [], LEFT, TOP + H - 1, W, H),
+        ))
 
     def _start(self, targets: list[tuple[float, float, float, float]], state: str, job: str) -> None:
         route: list[tuple[float, float]] = []
         cur = self.pos
         for rect in targets:
-            snake = _serpentine(rect)
+            snake = _lanes(rect)
             if not snake:
                 continue
             route += _route(cur, snake[0]) + snake
             cur = snake[-1]
         self._route, self._route_kind = route, "clean"
         self.path = [self.pos]
+        self._run_begin = time.time()
         self.active_zone = self.goto_target = None
         self.state, self.in_cleaning = state, job
         self.clean_time = self.clean_area = 0.0
@@ -477,6 +580,14 @@ class DemoController:
         payload.update(available=True, maps=[{"flag": 0, "name": "Home"}], current_map=0)
         return payload
 
+    async def freshness(self) -> dict[str, Any]:
+        self._tick()
+        m = self._rendered()
+        key = (self.history.rev, m.version, int(time.time() // 60))
+        if self._fresh is None or self._fresh[0] != key:
+            self._fresh = (key, await asyncio.to_thread(freshness, self.history, m, 0))
+        return self._fresh[1]
+
     async def settings(self) -> dict[str, Any]:
         await asyncio.sleep(0.25)
         limits = {
@@ -587,6 +698,8 @@ class DemoController:
             case "rename_room":
                 name = " ".join(str(params.get("name", "")).split())[:30]
                 self.nicknames.set(self.duid, int(params["room"]), name or None)
+            case "set_room_interval":
+                self.history.set_interval(0, int(params["room"]), int(params["days"]))
             case "reset_consumable":
                 self.consumables[params["key"]] = 0
             case "locate" | "test_volume" | "run_routine" | "resolve_error" | "dry_start" | "dry_stop" | "spot" \

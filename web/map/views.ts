@@ -5,6 +5,7 @@ import { $, $$, cssVar, hexRgb, toast } from "../dom";
 import { S, type ViewMode } from "../state";
 import { drawSelection, refreshMapOverlays, roomAt, setTool, toggleRoom } from "./core";
 import { itemPx } from "./editor";
+import { freshImage, loadFreshness, renderFreshPanel } from "../freshness";
 import { inner, mapImg, selCanvas, stage } from "./elements";
 import { buttonsReach, homeBox, stagePadding } from "./fit";
 import { groupObstacles, OBSTACLE_ICON } from "./layers";
@@ -20,15 +21,24 @@ export function setViewMode(mode: ViewMode): void {
     // storage blocked
   }
   syncViewChrome();
-  if (S.map) mapImg.src = mode === "plan" ? planImage() : S.map.base;
+  if (S.map) mapImg.src = viewImage();
   refreshMapOverlays();
   if (mode === "3d") void show3D();
+  if (mode === "fresh") void loadFreshness();
+}
+
+/** The base image for the current flat view. */
+export function viewImage(): string {
+  if (!S.map) return "";
+  return S.viewMode === "plan" ? planImage() : S.viewMode === "fresh" ? freshImage() : S.map.base;
 }
 
 export function syncViewChrome(): void {
   const is3d = S.viewMode === "3d";
   $$("#view-modes button").forEach((b) => b.classList.toggle("active", b.dataset.view === S.viewMode));
   inner.classList.toggle("plan", S.viewMode === "plan");
+  inner.classList.toggle("fresh", S.viewMode === "fresh");
+  renderFreshPanel();
   stage.classList.toggle("is-3d", is3d);
   $("#map3d").hidden = !is3d;
   map3d?.setActive(is3d);
@@ -210,7 +220,7 @@ function blend(base: RGBA, over: RGBA): RGBA {
 
 // Follow the system theme in every view.
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  if (S.map && S.viewMode === "plan") mapImg.src = planImage();
+  if (S.map && (S.viewMode === "plan" || S.viewMode === "fresh")) mapImg.src = viewImage();
   if (S.mask) drawSelection();
   map3d?.applyTheme();
 });

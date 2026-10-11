@@ -43,6 +43,17 @@
   --carpet-tint: rgba(255, 248, 235, 0.3);
   --carpet-hatch: rgba(80, 52, 24, 0.45);
   --halo: rgba(255, 255, 255, 0.95);
+  /* Freshness: one warm hue, light (cleaned lately) to dark (long ago), then "never reached". */
+  --fresh-0: #f9e0cc;
+  --fresh-1: #f4c49e;
+  --fresh-2: #eca06f;
+  --fresh-3: #de7642;
+  --fresh-4: #b9531f;
+  --fresh-5: #7a3210;
+  --fresh-none: #e6e8ec;
+  --fresh-none-hatch: rgba(120, 128, 140, 0.35);
+  --fresh-wall: #8b9099;
+  --fresh-furniture: #d5d9df;
   color-scheme: light;
 }
 
@@ -74,6 +85,17 @@
     --mask-dim: 26, 34, 49;
     --mask-dim-a: 165;
     --map-filter: brightness(0.82);
+    /* the same hue stepped for the dark surface: what's stale glows, what's fresh recedes */
+    --fresh-0: #3b2a20;
+    --fresh-1: #5e3b24;
+    --fresh-2: #8c5027;
+    --fresh-3: #c26b2c;
+    --fresh-4: #ea8b45;
+    --fresh-5: #ffb87a;
+    --fresh-none: #232b3a;
+    --fresh-none-hatch: rgba(160, 170, 190, 0.22);
+    --fresh-wall: #a3a9b3;
+    --fresh-furniture: #2c3444;
     --plan-paper: #182032;
     --plan-carpet: #1f2839;
     --plan-hatch: rgba(225, 205, 160, 0.14);
@@ -148,7 +170,9 @@ svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor;
   #status-card, #action-card, #mode-card, #dock-card, #map-card { order: 0; }
   .main { display: block; position: sticky; top: 26px; }
   #map-card { height: calc(100vh - 124px); min-height: 540px; display: flex; flex-direction: column; padding: 24px; }
-  #map-card .map-stage { flex: 1; min-height: 0; padding: 28px; }
+  #map-card .map-stage { flex: 1; min-height: 0; min-width: 0; padding: 28px; }
+  #map-card .map-body { flex: 1; min-height: 0; display: flex; gap: 18px; }
+  .fresh-panel { width: 310px; flex: none; overflow-y: auto; padding-right: 2px; }
   .status-state { font-size: 28px; }
   .room-label { font-size: 13px; padding: 6px 12px 6px 10px; }
 }
@@ -520,3 +544,47 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .layers-pop .sw.obstacles svg { width: 13px; height: 13px; }
 .layers-pop .sw.restrictions { background: rgba(229, 56, 62, 0.24); box-shadow: inset 0 0 0 2px #e0353c; }
 @media (max-width: 560px) { .layers-pop { right: 8px; bottom: 52px; } }
+
+/* ---- Freshness ---- */
+.map-body { position: relative; min-width: 0; }
+.fresh-panel { display: flex; flex-direction: column; gap: 14px; }
+.fresh-panel[hidden] { display: none; }
+@media (max-width: 1023px) { .fresh-panel { margin-top: 16px; } }
+.fresh-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fresh-head h4 { margin: 0; font-size: 15px; font-weight: 700; }
+.due-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px; margin-left: 8px; border-radius: 999px; background: rgba(236, 131, 90, 0.16); color: var(--text); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.fresh-head .due-badge { margin-left: 0; }
+.due-badge svg { width: 13px; height: 13px; color: #ec835a; }
+.fresh-rooms { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
+.fresh-room { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 12px; cursor: pointer; transition: background .15s; }
+.fresh-room:hover { background: var(--surface); }
+.fresh-room.sel { background: var(--accent-soft); }
+.fresh-sw { width: 14px; height: 14px; border-radius: 4px; flex: none; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1); }
+.fresh-sw.none, .fresh-legend i.none { background: repeating-linear-gradient(-45deg, var(--fresh-none-hatch) 0 1.5px, var(--fresh-none) 1.5px 5px); }
+.fresh-main { flex: 1; min-width: 0; }
+.fresh-name { display: flex; align-items: center; font-size: 14px; font-weight: 650; }
+.fresh-sub { margin-top: 2px; font-size: 12px; color: var(--muted); }
+.fresh-every { flex: none; max-width: 118px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.fresh-go { width: 100%; justify-content: center; }
+.fresh-ok, .fresh-empty { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface); color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.fresh-ok svg { width: 16px; height: 16px; flex: none; color: #0ca30c; }
+.fresh-empty svg { width: 17px; height: 17px; flex: none; }
+.fresh-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11.5px; color: var(--muted); }
+.fresh-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.fresh-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1); }
+.fresh-runs summary { cursor: pointer; font-size: 13px; font-weight: 650; }
+.fresh-runs ul { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.fresh-runs li { padding: 8px 10px; border-radius: 10px; background: var(--surface); font-size: 12.5px; }
+.run-when { font-weight: 650; }
+.run-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 2px; color: var(--muted); }
+svg.i.tiny { width: 12px; height: 12px; }
+.fresh-note { margin: 0; font-size: 11.5px; color: var(--faint); }
+.fresh-tip { position: absolute; z-index: 7; max-width: 250px; padding: 7px 10px; border-radius: 10px; background: var(--card); color: var(--text); box-shadow: var(--shadow); font-size: 12px; line-height: 1.4; pointer-events: none; }
+.map-inner.fresh img { filter: none; image-rendering: pixelated; }
+.map-inner.fresh img.map-carpets, .map-inner.fresh .map-info .path, .map-inner.fresh .map-info .mop-path { display: none; }
+.map-inner.fresh .room-label { flex-direction: column; gap: 1px; padding: 5px 10px; line-height: 1.15; }
+.map-inner.fresh .room-label .tick { display: none; }
+.map-inner.fresh .room-label .area { display: block; font-size: 11px; font-weight: 600; color: #5b6478; }
+.map-inner.fresh .room-label.due .area { color: inherit; font-weight: 750; }
+.map-inner.fresh .room-label.sel { background: var(--accent); color: #fff; }
+.map-inner.fresh .room-label.sel .area { color: rgba(255, 255, 255, 0.85); }

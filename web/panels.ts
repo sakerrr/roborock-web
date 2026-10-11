@@ -4,6 +4,7 @@ import { api, devicePath } from "./api";
 import { $, $opt, busyBtn, esc, fmtArea, fmtDuration, human, icon, toast } from "./dom";
 import { DONE, HIDDEN_OPTS, MODE_LABEL, OPT_LABEL, STATE_LABEL, TANK_WARN } from "./labels";
 import { drawSelection, refreshMapOverlays } from "./map/core";
+import { freshJobChanged } from "./freshness";
 import { loadSettings } from "./settings";
 import { S, type Pending } from "./state";
 import type { ModeOption, Status } from "./types";
@@ -16,7 +17,9 @@ export function setConn(ok: boolean, text: string): void {
 export function setStatus(st: Status): void {
   const jobEnded = S.jobRooms && !st.job;
   const backOnline = S.status?.connected === false && st.connected !== false;
+  const jobChanged = !!S.status && !!S.status.job !== !!st.job;
   S.status = st;
+  if (jobChanged) freshJobChanged(!!st.job);
   if (backOnline && S.tab === "settings") void loadSettings();
   if (jobEnded) {
     S.jobRooms = null;

@@ -27,7 +27,7 @@ from roborock.const import (
     STRAINER_REPLACE_TIME,
 )
 from roborock.data import UserData
-from roborock.data.v1.v1_containers import DnDTimer
+from roborock.data.v1.v1_containers import CleanRecord, DnDTimer
 from roborock.data.v1.v1_clean_modes import WashTowelModes
 from roborock.data.v1.v1_code_mappings import RoborockDockDustCollectionModeCode, RoborockStateCode
 from roborock.devices.device import RoborockDevice
@@ -38,6 +38,7 @@ from roborock.exceptions import RoborockException
 from roborock.roborock_typing import RoborockCommand
 from roborock.web_api import RoborockApiClient
 
+from history import Grid, History, Run, freshness, grid_from_map
 from maprender import MapRenderer, RenderedMap
 
 _LOGGER = logging.getLogger(__name__)
@@ -163,9 +164,15 @@ def _hhmm(h: int | None, m: int | None) -> str | None:
 class DeviceController:
     """Everything the UI can do with one V1 vacuum."""
 
-    def __init__(self, device: RoborockDevice, nicknames: RoomNames | None = None) -> None:
+    def __init__(self, device: RoborockDevice, nicknames: RoomNames | None = None, history: History | None = None) -> None:
         self.device = device
         self._nicknames = nicknames or RoomNames(None)
+        self.history = history or History(None)
+        self._fresh: tuple[tuple, dict[str, Any]] | None = None
+        self._run_seen = False  # a run was going on at the last history check
+        self._history_at = 0.0
+        self._to_backfill: list[int] = []  # older runs from the robot's list, still to fetch
+        self._record_maps: bool | None = None  # whether the robot hands out maps of past runs
         self._p = device.v1_properties
         self._renderer = MapRenderer()
         self._status_at = 0.0
@@ -292,6 +299,76 @@ class DeviceController:
         payload["maps"] = self._maps or []
         payload["current_map"] = self._p.status.current_map
         return payload
+
+    # ---------- history & freshness ----------
+
+    async def watch(self) -> None:
+        """Keep the cleaning history up to date for as long as the app runs."""
+        while True:
+            delay = 300.0
+            try:
+                delay = await self._history_tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:  # noqa: BLE001 - try again later
+                _LOGGER.info("Couldn't update the cleaning history: %s", err)
+            await asyncio.sleep(delay)
+
+    async def _history_tick(self) -> float:
+        """One look at the robot. Returns how long to wait before the next."""
+        st = await self.status()
+        if st.get("state") is None:
+            return 120  # can't reach it
+        if st.get("job") or st.get("phase") in ("cleaning", "returning", "paused"):
+            self._run_seen = True
+            return 30
+        if self._run_seen or time.monotonic() - self._history_at >= 900:
+            self._run_seen = False
+            self._history_at = time.monotonic()
+            summary = self._p.clean_summary
+            await summary.refresh()
+            ids = sorted({int(i) for i in summary.records or []}, reverse=True)
+            if ids and not self.history.has(str(ids[0])) and summary.last_clean_record:
+                # The map keeps showing the last run's path until the next one starts.
+                async with self._map_lock:
+                    await self._refresh_map()
+                grid = grid_from_map(self._map) if self._map else None
+                self.history.add(_run(ids[0], summary.last_clean_record, grid, "live", self._p.status.current_map))
+            self._to_backfill = [rid for rid in ids[1:] if not self.history.has(str(rid))]
+        # Fill in older runs from the robot's own list, one per look.
+        if self._to_backfill:
+            await self._backfill(self._to_backfill.pop(0))
+            return 15
+        return 120
+
+    async def _backfill(self, rid: int) -> None:
+        record = await self._p.clean_summary.get_clean_record(rid)
+        grid = None
+        if self._record_maps is not False:
+            # Not every robot hands out maps of past runs; ask once and remember.
+            try:
+                raw = await asyncio.wait_for(
+                    self._p.map_content.rpc_channel.send_command(RoborockCommand.GET_CLEAN_RECORD_MAP, params=[rid]), 20
+                )
+                rendered = await asyncio.to_thread(self._renderer.render, raw) if isinstance(raw, bytes) else None
+                grid = grid_from_map(rendered) if rendered else None
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.info("No map for past runs from this robot: %s", err or type(err).__name__)
+            self._record_maps = grid is not None
+        self.history.add(_run(rid, record, grid, "robot", None))
+
+    async def freshness(self) -> dict[str, Any]:
+        if self._map is None:
+            async with self._map_lock:
+                if self._map is None:
+                    await self._refresh_map()
+        if self._map is None:
+            return {"available": False}
+        flag = self._p.status.current_map
+        key = (self.history.rev, self._map.version, flag, int(time.time() // 60))
+        if self._fresh is None or self._fresh[0] != key:
+            self._fresh = (key, await asyncio.to_thread(freshness, self.history, self._map, flag))
+        return self._fresh[1]
 
     async def _refresh_map(self) -> None:
         p = self._p
@@ -591,6 +668,8 @@ class DeviceController:
                 self._nicknames.set(self.device.duid, int(params["room"]), name or None)
             case "run_routine":
                 await p.routines.execute_routine(int(params["id"]))
+            case "set_room_interval":
+                self.history.set_interval(s.current_map, int(params["room"]), int(params["days"]))
             case _:
                 raise ValueError(f"Unknown action: {name}")
 
@@ -625,6 +704,22 @@ def _version(raw: bytes) -> str:
     return hashlib.sha1(raw).hexdigest()[:12]
 
 
+def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: int | None) -> Run:
+    """A history entry from one of the robot's clean records (their ids are start times)."""
+    begin = int(record.begin or rid)
+    return Run(
+        id=str(rid),
+        begin=begin,
+        end=int(record.end or begin + (record.duration or 0)),
+        duration=record.duration,
+        area=record.square_meter_area,
+        complete=None if record.complete is None else bool(record.complete),
+        map_flag=record.map_flag if record.map_flag is not None else flag,
+        source=source,
+        grid=grid,
+    )
+
+
 class RoborockService:
     """Login session + DeviceManager lifecycle."""
 
@@ -638,6 +733,7 @@ class RoborockService:
         self._pending: tuple[str, RoborockApiClient] | None = None
         self._manager: DeviceManager | None = None
         self._controllers: dict[str, DeviceController] = {}
+        self._watchers: list[asyncio.Task] = []
         self._connect_task: asyncio.Task | None = None
         self._connect_error: str | None = None
         self._nicknames = RoomNames(data_dir / "room_names.json")
@@ -719,7 +815,10 @@ class RoborockService:
             await self._flush_cache()
             for dev in await self._manager.get_devices():
                 if dev.v1_properties is not None:
-                    self._controllers[dev.duid] = DeviceController(dev, self._nicknames)
+                    history = History(self._data_dir / f"history-{dev.duid}.json")
+                    ctrl = DeviceController(dev, self._nicknames, history)
+                    self._controllers[dev.duid] = ctrl
+                    self._watchers.append(asyncio.create_task(ctrl.watch()))
         except Exception as err:  # surfaced in the UI
             _LOGGER.exception("Failed to connect to Roborock cloud")
             self._connect_error = str(err) or type(err).__name__
@@ -733,6 +832,9 @@ class RoborockService:
             _LOGGER.info("Could not persist device cache: %s", err)
 
     async def _close_manager(self) -> None:
+        for task in self._watchers:
+            task.cancel()
+        self._watchers = []
         if self._manager:
             await self._flush_cache()
             try:

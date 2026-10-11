@@ -114,6 +114,8 @@ $<HTMLSelectElement>("#device-select").addEventListener("change", (e) => {
   S.map = null;
   S.mask = null;
   S.settings = null;
+  S.fresh = null;
+  S.freshAge = null;
   resetView(false);
   S.selected = [];
   S.zone = null;

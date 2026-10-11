@@ -169,6 +169,39 @@ export interface Dnd {
   end: string;
 }
 
+/** When a room was last cleaned, from the history the app keeps of every run. */
+export interface RoomFreshness {
+  id: number;
+  last_cleaned: number | null; // unix time
+  last_mopped: number | null;
+  interval: number; // days it may go between cleans
+  fresh: number; // share of its floor cleaned within that interval
+  overdue: boolean;
+}
+
+export interface RunSummary {
+  begin: number;
+  end: number;
+  duration: number | null;
+  area: number | null;
+  complete: boolean | null;
+  source: "live" | "robot" | "demo";
+  mapped: boolean; // the path is known, so it counts towards freshness
+  mopped: boolean;
+  rooms: number[]; // rooms it covered at least half of
+}
+
+export interface Freshness {
+  available: boolean;
+  map?: string; // version of the map it was worked out for
+  since?: number; // what the history goes back to
+  tracked?: number; // runs with a known path on this map
+  age?: string; // PNG on the room mask's grid: red = days since cleaned, green = since mopped, 255 = never
+  rooms?: RoomFreshness[];
+  runs?: RunSummary[];
+  intervals?: number[];
+}
+
 export interface Settings {
   connected?: boolean; // false: the robot couldn't be reached, so its own settings are missing
   volume?: number | null;

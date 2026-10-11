@@ -10,6 +10,7 @@ import { drawSelection, refreshMapOverlays, renderDraw, roomAt, toBase } from ".
 import { editPointerDown, editPointerMove, editPointerUp, renderShapes, type EditGesture } from "./editor";
 import { inner, mapImg, stage } from "./elements";
 import { fitMap, homeRect } from "./fit";
+import { freshHover } from "../freshness";
 import { get3D } from "./views";
 
 const MIN_ZOOM = 0.5;
@@ -300,6 +301,7 @@ stage.addEventListener("pointermove", (e) => {
   if (!S.map || S.viewMode === "3d") return;
   const g = gesture;
   if (!g) {
+    if (e.pointerType === "mouse") freshHover(e);
     const pickRooms = S.edit ? S.edit.mode === "rooms" && S.edit.tool !== "split" : S.tool === "rooms";
     if (pickRooms && e.pointerType === "mouse") {
       const r = inner.getBoundingClientRect();
@@ -338,6 +340,7 @@ stage.addEventListener("pointermove", (e) => {
       capture(g.id);
       stage.classList.add("panning");
       setHover(0);
+      freshHover(null);
     }
   }
   if (g.type === "pan") {
@@ -389,6 +392,7 @@ stage.addEventListener("pointerenter", () => {
 });
 stage.addEventListener("pointerleave", () => {
   overStage = false;
+  freshHover(null);
   if (!gesture) setHover(0);
 });
 

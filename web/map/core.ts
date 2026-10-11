@@ -3,6 +3,7 @@
 
 import { $, $$, clamp, closest, cssVar, esc, fmtArea, hexRgb, icon, loadImg, pct, toast } from "../dom";
 import { doAction, renderActions, renderStatus } from "../panels";
+import { freshLabel, freshMapChanged } from "../freshness";
 import { pollMap } from "../session";
 import { S, type Tool } from "../state";
 import type { MapPayload, Mask, Point } from "../types";
@@ -11,7 +12,7 @@ import { drawSvg, inner, mapImg, selCanvas, shapesSvg } from "./elements";
 import { fitMap, releaseStage } from "./fit";
 import { renderThings } from "./layers";
 import { applyView, isEditGesture, resetView } from "./panzoom";
-import { get3D, planImage, sync3D } from "./views";
+import { get3D, sync3D, viewImage } from "./views";
 
 export function mapEmpty(html: string): void {
   const empty = $("#map-empty");
@@ -21,7 +22,8 @@ export function mapEmpty(html: string): void {
   releaseStage();
 }
 
-async function decodeMask(src: string): Promise<Mask> {
+/** An image's raw pixels (the room mask, the freshness ages). */
+export async function decodeMask(src: string): Promise<Mask> {
   const img = await loadImg(src);
   const c = document.createElement("canvas");
   c.width = img.naturalWidth;
@@ -36,7 +38,7 @@ export async function setMap(m: MapPayload): Promise<void> {
   const [, mask] = await Promise.all([loadImg(m.base), decodeMask(m.mask)]);
   S.map = m;
   S.mask = mask;
-  mapImg.src = S.viewMode === "plan" ? planImage() : m.base;
+  mapImg.src = viewImage();
   selCanvas.width = mask.w;
   selCanvas.height = mask.h;
   drawSvg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
@@ -60,6 +62,7 @@ export async function setMap(m: MapPayload): Promise<void> {
   refreshMapOverlays();
   renderMarkers();
   sync3D(true);
+  freshMapChanged();
   if (S.status) renderStatus();
 }
 
@@ -91,8 +94,9 @@ function renderLabels(): void {
   $("#map-labels").innerHTML = m.rooms
     .map((r) => {
       const sel = S.edit ? S.edit.mode === "rooms" && S.edit.rooms.includes(r.id) : S.tool === "rooms" && S.selected.includes(r.id);
-      const area = S.viewMode === "plan" && r.area ? `<span class="area">${fmtArea(r.area)}</span>` : "";
-      return `<button class="room-label ${sel ? "sel" : ""}" data-room="${r.id}" style="left:${pct(r.x, m.width)};top:${pct(r.y, m.height)}">${icon("check", "i tick")}<span class="nm">${esc(r.name)}</span>${area}</button>`;
+      const fresh = S.viewMode === "fresh" ? freshLabel(r.id) : null;
+      const area = fresh ? `<span class="area">${esc(fresh.text)}</span>` : S.viewMode === "plan" && r.area ? `<span class="area">${fmtArea(r.area)}</span>` : "";
+      return `<button class="room-label ${sel ? "sel" : ""} ${fresh?.due ? "due" : ""}" data-room="${r.id}" style="left:${pct(r.x, m.width)};top:${pct(r.y, m.height)}">${icon("check", "i tick")}<span class="nm">${esc(r.name)}</span>${area}</button>`;
     })
     .join("");
 }

@@ -700,6 +700,8 @@ function toBase(ev) {
   };
 }
 
+// Room under a base-image point. Furniture and walls belong to no room, so a
+// click on the sofa falls back to the nearest room within about 20 cm.
 function roomAt(p) {
   if (!S.mask) return 0;
   const { w, h, data } = S.mask;
@@ -707,7 +709,20 @@ function roomAt(p) {
   const y = Math.floor(p.y / S.map.scale);
   if (x < 0 || y < 0 || x >= w || y >= h) return 0;
   const i = (y * w + x) * 4;
-  return data[i + 3] ? data[i] : 0;
+  if (!data[i + 3]) return 0;
+  if (data[i]) return data[i];
+  for (let r = 1; r <= 4; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = (ny * w + nx) * 4;
+        if (data[j + 3] && data[j]) return data[j];
+      }
+    }
+  }
+  return 0;
 }
 
 function toggleRoom(id) {

@@ -176,7 +176,8 @@ class DeviceController:
         self._room_names: dict[int, str] = {}
         self._room_names_flag: int | None = -1
         self._maps: list[dict[str, Any]] | None = None
-        self._unsupported: set[str] = set()
+        self._unsupported: dict[str, float] = {}  # setting -> when to ask the robot again
+        self._status_error: str | None = None
 
     # ---------- status ----------
 
@@ -188,9 +189,14 @@ class DeviceController:
                     try:
                         await p.status.refresh()
                         self._status_at = time.monotonic()
-                    except RoborockException as err:
+                        self._status_error = None
+                    except Exception as err:  # noqa: BLE001 - any failure here means "can't reach it right now"
+                        if repr(err) != self._status_error:  # once, not on every poll
+                            self._status_error = repr(err)
+                            unexpected = not isinstance(err, (RoborockException, TimeoutError))
+                            _LOGGER.warning("Can't get the robot's status: %s", err or type(err).__name__, exc_info=unexpected)
                         if p.status.state is None:
-                            return {"connected": False, "message": str(err), **self._identity()}
+                            return {"connected": False, "message": str(err) or "The robot didn't answer.", **self._identity()}
                         _LOGGER.debug("Status refresh failed, serving last known: %s", err)
         return self._status_payload()
 
@@ -317,14 +323,19 @@ class DeviceController:
     # ---------- settings ----------
 
     async def _try(self, key: str, fn) -> Any:
-        if key in self._unsupported:
+        if time.monotonic() < self._unsupported.get(key, 0):
             return None
         try:
             return await asyncio.wait_for(fn(), SETTING_TIMEOUT)
-        except (RoborockException, TimeoutError, ValueError, TypeError, KeyError, IndexError) as err:
+        except Exception as err:  # noqa: BLE001 - one setting failing shouldn't hide the others
+            # Remember settings this robot doesn't have, so the page doesn't wait on them each
+            # time. Only when it's online, though: offline, everything fails for a while.
             msg = str(err).lower()
-            if any(s in msg for s in ("unknown", "not support", "unsupported", "-10000", "invalid")):
-                self._unsupported.add(key)
+            if self.device.is_connected:
+                if any(s in msg for s in ("-10000", "unknown_method", "unknown method", "not support", "unsupported")):
+                    self._unsupported[key] = float("inf")
+                elif any(s in msg for s in ("unknown", "invalid")):
+                    self._unsupported[key] = time.monotonic() + 600  # probably missing; check again later
             _LOGGER.info("Setting %s unavailable: %s", key, err)
             return None
 
@@ -443,6 +454,7 @@ class DeviceController:
             "serial": getattr(info, "sn", None),
             "local": self.device.is_local_connected,
         }
+        out["connected"] = self.device.is_connected
         return out
 
     # ---------- actions ----------

@@ -35,6 +35,12 @@ export function renderSettings(): void {
   const s = S.settings;
   if (!s) return;
   const cards: string[] = [];
+  const offline = s.connected === false || S.status?.connected === false;
+  if (offline) {
+    cards.push(`<div class="card offline-card"><div class="card-head"><h3 class="card-title">${icon("wifi")}Can't reach your robot</h3></div>
+      <p class="muted">Sound, do not disturb, dock and maintenance settings are read from the robot itself, so they'll be back here as soon as it's online again. Check that it's switched on and connected to Wi‑Fi.</p>
+      <button class="btn-soft" data-act="refresh-settings" style="margin-top:14px">Try again</button></div>`);
+  }
 
   // Robot
   let robot = "";
@@ -107,7 +113,7 @@ export function renderSettings(): void {
       ${d.firmware ? `<dt>Firmware</dt><dd>${esc(d.firmware)}</dd>` : ""}
       ${n.ip ? `<dt>IP address</dt><dd>${esc(n.ip)}</dd>` : ""}
       ${n.ssid ? `<dt>Wi‑Fi</dt><dd>${esc(n.ssid)}${n.rssi ? ` · ${n.rssi} dBm` : ""}</dd>` : ""}
-      <dt>Connection</dt><dd>${d.local ? "Local network" : "Roborock cloud"}</dd>
+      <dt>Connection</dt><dd>${offline ? "Offline" : d.local ? "Local network" : "Roborock cloud"}</dd>
       <dt>Account</dt><dd>${esc(S.auth?.email || "–")}</dd>
     </dl>
     <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">

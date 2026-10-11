@@ -170,6 +170,7 @@ export interface Dnd {
 }
 
 export interface Settings {
+  connected?: boolean; // false: the robot couldn't be reached, so its own settings are missing
   volume?: number | null;
   dnd?: Dnd | null;
   child_lock?: boolean | null;

@@ -6,9 +6,10 @@
 import { $, clamp, closest, toast } from "../dom";
 import { S } from "../state";
 import type { Point } from "../types";
-import { drawSelection, fitMap, refreshMapOverlays, renderDraw, roomAt, toBase } from "./core";
+import { drawSelection, refreshMapOverlays, renderDraw, roomAt, toBase } from "./core";
 import { editPointerDown, editPointerMove, editPointerUp, renderShapes, type EditGesture } from "./editor";
 import { inner, mapImg, stage } from "./elements";
+import { fitMap, homeRect } from "./fit";
 import { get3D } from "./views";
 
 const MIN_ZOOM = 0.5;
@@ -65,13 +66,14 @@ const scheduleView = () => {
 export function clampView(): void {
   const v = S.view;
   v.s = clamp(v.s, MIN_ZOOM, MAX_ZOOM);
-  // Move freely, but always keep a good part of the map on screen.
-  const W = inner.offsetWidth * v.s;
-  const H = inner.offsetHeight * v.s;
+  // Move freely, but always keep a good part of the home on screen.
+  const home = homeRect();
+  const W = home.w * v.s;
+  const H = home.h * v.s;
   const mx = Math.min(W, stage.clientWidth) * 0.35;
   const my = Math.min(H, stage.clientHeight) * 0.35;
-  const ox = inner.offsetLeft;
-  const oy = inner.offsetTop;
+  const ox = inner.offsetLeft + home.x * v.s;
+  const oy = inner.offsetTop + home.y * v.s;
   v.tx = clamp(v.tx, mx - ox - W, stage.clientWidth - mx - ox);
   v.ty = clamp(v.ty, my - oy - H, stage.clientHeight - my - oy);
 }

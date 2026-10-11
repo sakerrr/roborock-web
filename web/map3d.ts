@@ -6,6 +6,7 @@
 // drag turns, a two-finger swipe moves, pinch or the wheel zooms.
 
 import * as THREE from "three";
+import type { Box } from "./map/fit";
 import type { Layers, Pt } from "./state";
 import type { MapPayload, Mask, Point, Polyline, RestrictionType } from "./types";
 
@@ -18,11 +19,22 @@ const ROBOT_R = 3.5; // the robot is about 35 cm across
 const ROBOT_H = 2;
 const MIN_PITCH = 0.08; // radians from straight down
 const MAX_PITCH = 1.3;
+const HOME_PITCH = 0.68; // the starting view looks in from the front at about 40°
+
+/** Space to keep clear around the edges of the view, in CSS px. */
+export interface ViewInsets {
+  l: number;
+  r: number;
+  t: number;
+  b: number;
+  buttons: { w: number; h: number }; // the zoom buttons in the bottom-right corner
+}
 
 export interface Map3DHooks {
   roomAt(p: Point): number;
   onRoomClick(id: number): void;
   onHover(id: number): void;
+  insets(): ViewInsets;
 }
 
 /** A small marker floating over the floor: an obstacle, the go-to target. */
@@ -135,6 +147,9 @@ export class Map3D {
   private floorSrc = "";
   private view: View = { tx: 0, tz: 0, dist: 100, yaw: 0, pitch: 0.95 };
   private fitDist = 100;
+  private home = { x0: -0.5, x1: 0.5, z0: -0.5, z1: 0.5 }; // where the home is, in scene units
+  private homeView: View | null = null;
+  private homePending = false;
   private camAnim: { from: View; to: View; start: number; ms: number } | null = null;
   private robotAnim: { from: RobotPose; to: RobotPose; start: number; ms: number } | null = null;
   private hover = 0;
@@ -265,11 +280,20 @@ export class Map3D {
   /* ---------- data ---------- */
 
   /** Called whenever the app has a new map. Cheap when only the robot moved. */
-  setMap(m: MapPayload, mask: Mask, maskKey: string): void {
+  setMap(m: MapPayload, mask: Mask, maskKey: string, homeBox: Box): void {
     const sizeChanged = mask.w !== this.W || mask.h !== this.H;
+    const wasHome = this.atHome();
     this.W = mask.w;
     this.H = mask.h;
     this.scale = m.scale;
+    const home = {
+      x0: homeBox.x / m.scale - this.W / 2,
+      x1: (homeBox.x + homeBox.w) / m.scale - this.W / 2,
+      z0: homeBox.y / m.scale - this.H / 2,
+      z1: (homeBox.y + homeBox.h) / m.scale - this.H / 2,
+    };
+    const homeMoved = (["x0", "x1", "z0", "z1"] as const).some((k) => Math.abs(home[k] - this.home[k]) > 0.5);
+    this.home = home;
     if (sizeChanged) {
       this.floor.geometry.dispose();
       this.floor.geometry = new THREE.PlaneGeometry(this.W, this.H);
@@ -283,7 +307,8 @@ export class Map3D {
     }
     this.setFloorImage(m.base);
     this.setRobot(m.robot, m.charger, sizeChanged);
-    if (sizeChanged) this.resetView(false);
+    // Re-frame a new map, or the same one if it grew while you were at the starting view.
+    if (sizeChanged || (homeMoved && wasHome)) this.resetView(false);
     this.requestRender();
   }
 
@@ -500,16 +525,90 @@ export class Map3D {
     cam.updateProjectionMatrix();
   }
 
-  private fitDistance(): number {
-    const fov = THREE.MathUtils.degToRad(this.camera.fov);
-    const aspect = this.camera.aspect || 1;
-    const need = Math.max(this.H * 0.95, (this.W / aspect) * 1.05);
-    return (need / 2 / Math.tan(fov / 2)) * 1.12;
+  /** The starting view: from the front, as close as it gets with the whole home in view. */
+  private computeHome(): View | null {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    if (!w || !h) return null;
+    const { x0, x1, z0, z1 } = this.home;
+    const ins = this.hooks.insets();
+    const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const aspect = this.camera.aspect || w / h;
+    const corners = [x0, x1].flatMap((x) => [z0, z1].flatMap((z) => [0, WALL_H].map((y) => new THREE.Vector3(x, y, z))));
+    const p = new THREE.Vector3();
+    const bounds = () => {
+      let bx0 = Infinity;
+      let bx1 = -Infinity;
+      let by0 = Infinity;
+      let by1 = -Infinity;
+      for (const c of corners) {
+        p.copy(c).project(this.camera);
+        bx0 = Math.min(bx0, p.x);
+        bx1 = Math.max(bx1, p.x);
+        by0 = Math.min(by0, p.y);
+        by1 = Math.max(by1, p.y);
+      }
+      return { bx0, bx1, by0, by1 };
+    };
+    // Move and zoom until the home's box fills the area inside the insets.
+    const fit = (start: View, right: number, bottom: number): View => {
+      const v = { ...start };
+      const ax0 = -1 + (2 * ins.l) / w; // the area to fill, in clip space (y up)
+      const ax1 = 1 - (2 * right) / w;
+      const ay0 = -1 + (2 * bottom) / h;
+      const ay1 = 1 - (2 * ins.t) / h;
+      for (let i = 0; i < 24; i++) {
+        this.placeCamera(v);
+        const { bx0, bx1, by0, by1 } = bounds();
+        const grow = Math.max((bx1 - bx0) / (ax1 - ax0), (by1 - by0) / (ay1 - ay0));
+        const dx = (bx0 + bx1 - ax0 - ax1) / 2;
+        const dy = (by0 + by1 - ay0 - ay1) / 2;
+        const half = v.dist * tan; // half the view's height at the target, in scene units
+        v.tx += dx * half * aspect;
+        v.tz -= (dy * half) / Math.cos(v.pitch);
+        v.dist *= grow;
+        if (Math.abs(grow - 1) < 1e-3 && Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) break;
+      }
+      return v;
+    };
+    const guess: View = { tx: (x0 + x1) / 2, tz: (z0 + z1) / 2, dist: (Math.max(z1 - z0, (x1 - x0) / aspect) / tan) * 0.7, yaw: 0, pitch: HOME_PITCH };
+    let best = fit(guess, ins.r, ins.b);
+    // How big the home looks from a view. (Not just the distance: moving the target tilts the view.)
+    const size = (v: View) => {
+      this.placeCamera(v);
+      const { bx0, bx1, by0, by1 } = bounds();
+      return (bx1 - bx0) * (by1 - by0);
+    };
+    // If the zoom buttons would cover the near corner, clear them: beside or above, whichever shows more.
+    this.placeCamera(best);
+    const { bx1, by0 } = bounds();
+    const btn = ins.buttons;
+    if (btn.w && ((bx1 + 1) / 2) * w > w - btn.w && ((1 - by0) / 2) * h > h - btn.h) {
+      const beside = fit(best, Math.max(ins.r, btn.w), ins.b);
+      const above = fit(best, ins.r, Math.max(ins.b, btn.h));
+      best = size(beside) >= size(above) ? beside : above;
+    }
+    this.updateCamera();
+    return best;
+  }
+
+  private atHome(): boolean {
+    const h = this.homeView;
+    const v = this.camAnim?.to ?? this.view;
+    if (!h) return true;
+    return (
+      Math.abs(v.tx - h.tx) < 0.5 && Math.abs(v.tz - h.tz) < 0.5 && Math.abs(v.dist / h.dist - 1) < 0.01 &&
+      Math.abs(v.yaw - h.yaw) < 1e-3 && Math.abs(v.pitch - h.pitch) < 1e-3
+    );
   }
 
   resetView(animate = true): void {
-    this.fitDist = this.fitDistance();
-    this.animateTo({ tx: 0, tz: this.H * 0.03, dist: this.fitDist, yaw: 0, pitch: 0.68 }, animate);
+    const home = this.computeHome();
+    this.homePending = !home;
+    if (!home) return;
+    this.homeView = home;
+    this.fitDist = home.dist;
+    this.animateTo({ ...home }, animate);
   }
 
   centerOnRobot(): boolean {
@@ -566,9 +665,13 @@ export class Map3D {
   }
 
   private updateCamera(): void {
-    const { tx, tz, dist, yaw, pitch } = this.view;
+    this.placeCamera(this.view);
+  }
+
+  private placeCamera({ tx, tz, dist, yaw, pitch }: View): void {
     this.camera.position.set(tx + dist * Math.sin(pitch) * Math.sin(yaw), dist * Math.cos(pitch), tz + dist * Math.sin(pitch) * Math.cos(yaw));
     this.camera.lookAt(tx, 0, tz);
+    this.camera.updateMatrixWorld();
   }
 
   private groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
@@ -602,14 +705,21 @@ export class Map3D {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     if (!w || !h) return;
+    const wasHome = this.homePending || this.atHome();
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    const fit = this.fitDistance();
-    if (Math.abs(fit - this.fitDist) > 1e-3) {
-      // Keep the same relative zoom when the window changes size.
-      this.view.dist *= fit / this.fitDist;
-      this.fitDist = fit;
+    if (wasHome) {
+      // At the starting view: re-frame the home for the new size.
+      this.resetView(false);
+    } else {
+      // Moved around: keep the same relative zoom.
+      const home = this.computeHome();
+      if (home) {
+        this.view.dist *= home.dist / this.fitDist;
+        this.homeView = home;
+        this.fitDist = home.dist;
+      }
     }
     this.requestRender();
   }

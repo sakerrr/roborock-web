@@ -1,7 +1,8 @@
 // Entry point: global button handling and start-up.
 
 import { $, $$, closest, icon } from "./dom";
-import { fitMap, mapEmpty, refreshMapOverlays } from "./map/core";
+import { mapEmpty, refreshMapOverlays } from "./map/core";
+import { fitMap } from "./map/fit";
 import {
   clearEditPicks, deleteSelected, discardEdits, endEdit, mergeRooms, renameRoom, saveRestrictions,
   setEditMode, setEditTool, splitRoom, startEdit, undoEdit,

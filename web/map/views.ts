@@ -6,6 +6,7 @@ import { S, type ViewMode } from "../state";
 import { drawSelection, refreshMapOverlays, roomAt, setTool, toggleRoom } from "./core";
 import { itemPx } from "./editor";
 import { inner, mapImg, selCanvas, stage } from "./elements";
+import { buttonsReach, homeBox, stagePadding } from "./fit";
 import { groupObstacles, OBSTACLE_ICON } from "./layers";
 import { applyView } from "./panzoom";
 
@@ -55,6 +56,7 @@ export async function show3D(): Promise<void> {
           S.hover = id;
           drawSelection();
         },
+        insets: () => ({ ...stagePadding(), buttons: buttonsReach() }),
       });
     });
     await map3dLoading;
@@ -74,7 +76,7 @@ export async function show3D(): Promise<void> {
 export function sync3D(mapChanged = false): void {
   const m = S.map;
   if (!map3d || S.viewMode !== "3d" || !m || !S.mask) return;
-  if (mapChanged) map3d.setMap(m, S.mask, m.mask);
+  if (mapChanged) map3d.setMap(m, S.mask, m.mask, homeBox());
   map3d.setLabels(m.rooms.map((r) => ({ id: r.id, name: r.name, x: r.x, y: r.y, sel: S.selected.includes(r.id) })));
   map3d.setRestrictions(m.frame ? m.restrictions.map((r) => ({ type: r.type, pts: itemPx(r) })) : []);
   const markers: Marker3D[] = groupObstacles(m.obstacles ?? [], m.scale).map((g) => ({

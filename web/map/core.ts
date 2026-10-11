@@ -7,9 +7,10 @@ import { pollMap } from "../session";
 import { S, type Tool } from "../state";
 import type { MapPayload, Mask, Point } from "../types";
 import { copyRestrictions, editRoomClick, endEdit, renderEditFoot, renderShapes, syncInnerClasses } from "./editor";
-import { drawSvg, inner, mapImg, selCanvas, shapesSvg, stage } from "./elements";
+import { drawSvg, inner, mapImg, selCanvas, shapesSvg } from "./elements";
+import { fitMap, releaseStage } from "./fit";
 import { renderThings } from "./layers";
-import { applyView, clampView, isEditGesture, resetView } from "./panzoom";
+import { applyView, isEditGesture, resetView } from "./panzoom";
 import { get3D, planImage, sync3D } from "./views";
 
 export function mapEmpty(html: string): void {
@@ -17,6 +18,7 @@ export function mapEmpty(html: string): void {
   empty.innerHTML = html;
   empty.hidden = false;
   inner.hidden = true;
+  releaseStage();
 }
 
 async function decodeMask(src: string): Promise<Mask> {
@@ -59,24 +61,6 @@ export async function setMap(m: MapPayload): Promise<void> {
   renderMarkers();
   sync3D(true);
   if (S.status) renderStatus();
-}
-
-export function fitMap(): void {
-  const m = S.map;
-  if (!m || inner.hidden) return;
-  const cs = getComputedStyle(stage);
-  const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  if (availW <= 0) return;
-  const desktop = window.matchMedia("(min-width: 1024px)").matches;
-  // Desktop: fill the map card. Smaller screens: keep room for the controls below.
-  const maxH = desktop
-    ? stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-    : clamp(window.innerHeight * 0.48, 220, 560);
-  const k = Math.min(availW / m.width, maxH / m.height, 3);
-  inner.style.width = `${Math.round(m.width * k)}px`;
-  inner.style.height = `${Math.round(m.height * k)}px`;
-  clampView();
-  applyView();
 }
 
 function renderMapSelect(): void {

@@ -197,7 +197,7 @@ svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor;
 .map-tools button svg { width: 16px; height: 16px; }
 .map-tools button.active { background: var(--seg-active); color: var(--text); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08); }
 .map-stage { position: relative; display: grid; place-items: center; min-height: 260px; border-radius: 20px; background: var(--surface); padding: 18px; overflow: hidden; }
-.map-inner { position: relative; user-select: none; -webkit-user-select: none; transform-origin: 0 0; will-change: transform; }
+.map-inner { position: absolute; left: 0; top: 0; place-self: start; user-select: none; -webkit-user-select: none; transform-origin: 0 0; will-change: transform; }
 .map-inner.animate { transition: transform .25s ease; }
 .map-inner.draw { cursor: crosshair; }
 .map-inner img, .map-inner canvas, .map-inner svg.map-draw { position: absolute; inset: 0; width: 100%; height: 100%; }

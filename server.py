@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import threading
 import webbrowser
@@ -24,7 +25,16 @@ ROOT = Path(__file__).parent
 STATIC = ROOT / "static"
 
 
+def code_fingerprint() -> str:
+    """Hash of the app's Python files, to notice updates made after the server started."""
+    h = hashlib.sha1()
+    for f in sorted(ROOT.glob("*.py")):
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
 def create_app(demo: bool) -> FastAPI:
+    started_with = code_fingerprint()
     if demo:
         from demo import DemoService
 
@@ -66,7 +76,8 @@ def create_app(demo: bool) -> FastAPI:
 
     @app.get("/api/auth")
     async def auth():
-        return service.auth_state()
+        # The UI files are always served fresh, but Python changes need a restart.
+        return {**service.auth_state(), "restart_needed": code_fingerprint() != started_with}
 
     @app.post("/api/auth/code")
     async def request_code(email: str = Body(..., embed=True)):

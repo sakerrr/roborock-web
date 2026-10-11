@@ -410,3 +410,10 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
   .edit-tools button span, .head-tools .btn-soft span { display: none; }
   .edit-tools button { padding: 8px; }
 }
+
+/* "restart to finish updating" */
+.update-banner { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100vw - 32px)); padding: 10px 10px 10px 16px; border-radius: 16px; background: var(--card); color: var(--text); box-shadow: var(--shadow-lift); border: 1px solid var(--line); font-size: 14px; }
+.update-banner > svg { color: var(--accent); width: 18px; height: 18px; flex: none; }
+.update-banner code { font-size: 12.5px; background: var(--surface); padding: 1px 5px; border-radius: 6px; }
+.update-banner button { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); flex: none; }
+.update-banner button:hover { background: var(--surface); }

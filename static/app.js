@@ -107,10 +107,16 @@ async function refreshAuth() {
     document.body.innerHTML = `<div class="center-msg">Can't reach the local server.<br>${esc(e.message)}</div>`;
     return;
   }
+  checkForUpdate(S.auth);
   if (!S.auth.logged_in) return showLogin();
   $("#login-view").hidden = true;
   $("#app-view").hidden = false;
   await loadDevices();
+}
+
+// Python changes only take effect after a restart; say so instead of failing quietly.
+function checkForUpdate(auth) {
+  if (auth && auth.restart_needed && !S.updateDismissed) $("#update-banner").hidden = false;
 }
 
 function showLogin() {
@@ -224,7 +230,10 @@ function startLoops() {
   setInterval(() => !document.hidden && pollStatus(), 2500);
   setInterval(() => !document.hidden && pollMap(), 1000);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) { pollStatus(); pollMap(); }
+    if (document.hidden) return;
+    pollStatus();
+    pollMap();
+    api("/api/auth").then(checkForUpdate).catch(() => {});
   });
 }
 
@@ -1113,7 +1122,8 @@ function syncInnerClasses() {
 }
 
 function startEdit() {
-  if (!S.map || !S.map.frame) return;
+  if (!S.map) { toast("The map is still loading. Try again in a moment."); return; }
+  if (!S.map.frame) { toast("Restart the app to turn on map editing", true); return; }
   const ph = S.status && S.status.phase;
   if (ph === "cleaning" || ph === "returning") { toast("Pause or dock the robot to edit the map"); return; }
   S.edit = { mode: "walls", tool: "select", items: copyRestrictions(), sel: null, dirty: false, history: [], rooms: [], line: null, draft: null, drag: false };
@@ -1715,6 +1725,10 @@ document.addEventListener("click", async (e) => {
     case "logout": return logout();
     case "refresh-settings": return loadSettings();
     case "edit-start": return startEdit();
+    case "dismiss-update":
+      S.updateDismissed = true;
+      $("#update-banner").hidden = true;
+      return;
     case "edit-done": return endEdit();
     case "edit-save": return saveRestrictions(t);
     case "edit-undo": return undoEdit();

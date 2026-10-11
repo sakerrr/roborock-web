@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import pickle
 import time
 from pathlib import Path
 from typing import Any
@@ -720,6 +721,37 @@ def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: in
     )
 
 
+def _unpickle(data: bytes) -> Any:
+    try:
+        return pickle.loads(data)
+    except Exception:  # noqa: BLE001 - empty or damaged: start with a fresh cache
+        _LOGGER.info("Ignoring a damaged device cache")
+        return None
+
+
+class SafeCache(FileCache):
+    """python-roborock's device cache, but a damaged or half-written file can't stop the
+    app from connecting: it's written to a temporary file first, and a bad one is ignored.
+    (The library opens the file for writing before it serialises, so a failed save left it empty.)"""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path, deserialize_fn=_unpickle)
+        self._path = path
+
+    async def flush(self) -> None:
+        data = self._cache_data
+        if data is None:
+            return
+
+        def write() -> None:
+            blob = pickle.dumps(data)  # before touching the file
+            tmp = self._path.with_suffix(".tmp")
+            tmp.write_bytes(blob)
+            os.replace(tmp, self._path)
+
+        await asyncio.to_thread(write)
+
+
 class RoborockService:
     """Login session + DeviceManager lifecycle."""
 
@@ -728,7 +760,7 @@ class RoborockService:
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
         self._session_file = data_dir / "session.json"
-        self._cache = FileCache(data_dir / "cache.pkl")
+        self._cache = SafeCache(data_dir / "cache.pkl")
         self._session: dict[str, Any] | None = None
         self._pending: tuple[str, RoborockApiClient] | None = None
         self._manager: DeviceManager | None = None
@@ -793,7 +825,7 @@ class RoborockService:
         self._connect_error = None
         for f in (self._session_file, self._data_dir / "cache.pkl"):
             f.unlink(missing_ok=True)
-        self._cache = FileCache(self._data_dir / "cache.pkl")
+        self._cache = SafeCache(self._data_dir / "cache.pkl")
 
     def _write_session(self) -> None:
         self._data_dir.mkdir(parents=True, exist_ok=True)

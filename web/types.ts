@@ -40,6 +40,7 @@ export interface DockStatus {
 
 // When the robot can't be reached yet, only the identity fields and a message arrive.
 export interface Status {
+  links?: Links;
   duid: string;
   name: string;
   model: string;
@@ -206,6 +207,13 @@ export interface Freshness {
   rooms?: RoomFreshness[];
   runs?: RunSummary[];
   intervals?: number[];
+}
+
+/** How the app reaches the robot right now. */
+export interface Links {
+  local: boolean; // directly, on the home network
+  cloud: boolean; // through Roborock's cloud
+  ip: string | null; // the robot's address on the home network, when known
 }
 
 export interface Settings {

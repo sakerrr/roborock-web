@@ -119,6 +119,8 @@ If a map has no-carpet zones made in the Roborock app, the editor warns you: the
 - Roborock limits sign-in codes (a few per minute, about 10 an hour, 20 a day). If it stops sending them, the app keeps the code box open, so a code you already got by email still works (or use **Already have a code?**). The block often clears within an hour but can last until the next day, and every new try can extend it.
 - There's no way around the codes: Roborock now asks for an email code even when you sign in with a password.
 - If the robot or Roborock isn't responding, use **Reconnect**. It retries with your saved sign-in. Signing out means you'll need a new code to get back in.
+- The app talks to the robot directly on your home network when it can, and through Roborock's cloud otherwise (maps always come through the cloud). It remembers the robot's address, and looks for it on the network if needed, so a cloud outage doesn't cut you off. Settings → About shows which ways are up.
+- A log of what the app did, connections included, is kept in `data/app.log` (it rotates, so it stays small).
 
 ## Development
 

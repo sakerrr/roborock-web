@@ -24,6 +24,13 @@ export async function loadSettings(): Promise<void> {
   }
 }
 
+function connectionText(): string {
+  const l = S.status?.links;
+  if (!l) return S.status?.connected === false ? "Offline" : S.status?.local ? "Local network" : "Roborock cloud";
+  const ways = [l.local ? `Home network${l.ip ? ` (${esc(l.ip)})` : ""}` : "", l.cloud ? "Roborock cloud" : ""].filter(Boolean);
+  return ways.length ? ways.join(" and ") : "Offline";
+}
+
 const sw = (action: string, on: boolean | null | undefined) =>
   `<label class="switch"><input type="checkbox" data-switch="${action}" ${on ? "checked" : ""}><span></span></label>`;
 
@@ -122,7 +129,7 @@ export function renderSettings(): void {
       ${d.firmware ? `<dt>Firmware</dt><dd>${esc(d.firmware)}</dd>` : ""}
       ${n.ip ? `<dt>IP address</dt><dd>${esc(n.ip)}</dd>` : ""}
       ${n.ssid ? `<dt>Wi‑Fi</dt><dd>${esc(n.ssid)}${n.rssi ? ` · ${n.rssi} dBm` : ""}</dd>` : ""}
-      <dt>Connection</dt><dd>${offline ? "Offline" : d.local ? "Local network" : "Roborock cloud"}</dd>
+      <dt>Connection</dt><dd>${connectionText()}</dd>
       <dt>Account</dt><dd>${esc(S.auth?.email || "–")}</dd>
     </dl>
     <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">

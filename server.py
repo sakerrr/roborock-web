@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 import webbrowser
 from contextlib import asynccontextmanager
@@ -167,6 +168,12 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    if not args.demo:
+        # Also keep a log in data/, so connection trouble can be looked into afterwards.
+        (ROOT / "data").mkdir(exist_ok=True)
+        log_file = RotatingFileHandler(ROOT / "data" / "app.log", maxBytes=1_000_000, backupCount=2)
+        log_file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logging.getLogger().addHandler(log_file)
     url = f"http://localhost:{args.port}"
     print(f"\n  Roborock is running at {url}" + ("  (demo mode)" if args.demo else "") + "\n  Press Ctrl+C to stop.\n")
     if not args.no_browser:

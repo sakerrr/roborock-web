@@ -559,6 +559,7 @@ class DemoController:
         return {
             "duid": self.duid, "name": "Qrevo S (demo)", "model": "roborock.vacuum.a104", "product": "Qrevo S",
             "connected": True, "local": True, "state": st, "phase": phase,
+            "links": {"local": True, "cloud": True, "ip": "192.168.1.42"},
             "job": self.in_cleaning != "complete", "job_type": self.in_cleaning,
             "battery": round(self.battery), "clean_time": int(self.clean_time),
             "clean_area": round(self.clean_area, 1), "clean_percent": None,

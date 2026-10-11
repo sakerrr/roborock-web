@@ -14,7 +14,9 @@ import json
 import logging
 import os
 import pickle
+import socket
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,23 +31,34 @@ from roborock.const import (
     STRAINER_REPLACE_TIME,
 )
 from roborock.data import UserData
-from roborock.data.v1.v1_containers import CleanRecord, DnDTimer
+from roborock.data.v1.v1_containers import CleanRecord, DnDTimer, NetworkInfo
 from roborock.data.v1.v1_clean_modes import WashTowelModes
 from roborock.data.v1.v1_code_mappings import RoborockDockDustCollectionModeCode, RoborockStateCode
 from roborock.devices.device import RoborockDevice
+from roborock.devices.cache import DeviceCacheData
 from roborock.devices.device_manager import DeviceManager, UserParams, create_device_manager
 from roborock.devices.file_cache import FileCache
+from roborock.devices.transport.local_channel import LocalChannel
 from roborock.devices.traits.v1.consumeable import ConsumableAttribute
 from roborock.exceptions import RoborockException, RoborockRateLimit, RoborockTooFrequentCodeRequests
 from roborock.roborock_typing import RoborockCommand
 from roborock.web_api import RoborockApiClient
+
+import roborock.mqtt.roborock_session as _mqtt_session
 
 from history import Grid, History, Run, estimate_model, freshness, grid_from_map
 from maprender import MapRenderer, RenderedMap
 
 _LOGGER = logging.getLogger(__name__)
 
+# After Roborock's broker turns a connection away, python-roborock waits up to six hours
+# before trying the cloud again. For an app in your home that's far too long to sit offline.
+_mqtt_session.MAX_BACKOFF_INTERVAL = timedelta(minutes=10)
+
 STATUS_TTL = 2.0
+STATUS_RETRY = 15.0  # after a failed status check, answer from what's known this long before asking again
+LOCAL_PORT = 58867
+LOCAL_RETRY = 300.0  # how often to try (and if need be, look for) the direct link while it's down
 MAP_TTL_ACTIVE = 3.0
 MAP_TTL_IDLE = 20.0
 MAP_RETRY = 30.0  # after a failed map fetch, serve the last map this long before asking again
@@ -178,9 +191,15 @@ class DeviceController:
 
     def __init__(
         self, device: RoborockDevice, nicknames: RoomNames | None = None, history: History | None = None,
-        data_dir: Path | None = None,
+        data_dir: Path | None = None, cache: FileCache | None = None,
     ) -> None:
         self.device = device
+        self._cache = cache
+        # The robot's address on the home network, for the direct link (see _ensure_local).
+        self._ip_file = data_dir / f"local-{device.duid}.json" if data_dir else None
+        self._local_tried = 0.0
+        self._status_failed_at = 0.0
+        self._status_message = "The robot didn't answer."
         # The last map is kept on disk so a restart shows it straight away.
         self._map_file = data_dir / f"map-{device.duid}.json" if data_dir else None
         self._map_saved_at = 0.0
@@ -212,22 +231,44 @@ class DeviceController:
 
     async def status(self, force: bool = False) -> dict[str, Any]:
         p = self._p
-        if force or time.monotonic() - self._status_at > STATUS_TTL:
+        now = time.monotonic()
+        # After a failure, answer straight away for a while instead of making every request
+        # wait out another timeout (they used to queue up behind each other).
+        due = now - self._status_at > STATUS_TTL and (force or now - self._status_failed_at > STATUS_RETRY)
+        if due:
             async with self._status_lock:
-                if force or time.monotonic() - self._status_at > STATUS_TTL:
+                if time.monotonic() - self._status_at > STATUS_TTL:
                     try:
                         await p.status.refresh()
                         self._status_at = time.monotonic()
                         self._status_error = None
                     except Exception as err:  # noqa: BLE001 - any failure here means "can't reach it right now"
+                        self._status_failed_at = time.monotonic()
+                        self._status_message = str(err) or "The robot didn't answer."
                         if repr(err) != self._status_error:  # once, not on every poll
                             self._status_error = repr(err)
                             unexpected = not isinstance(err, (RoborockException, TimeoutError))
                             _LOGGER.warning("Can't get the robot's status: %s", err or type(err).__name__, exc_info=unexpected)
-                        if p.status.state is None:
-                            return {"connected": False, "message": str(err) or "The robot didn't answer.", **self._identity()}
                         _LOGGER.debug("Status refresh failed, serving last known: %s", err)
-        return self._status_payload()
+        if p.status.state is None:
+            return self._offline_payload()
+        try:
+            return self._status_payload()
+        except Exception as err:  # noqa: BLE001 - half-loaded status after a dropped link: say offline
+            _LOGGER.info("Couldn't read the robot's status: %s", err or type(err).__name__)
+            return self._offline_payload()
+
+    def _offline_payload(self) -> dict[str, Any]:
+        return {"connected": False, "message": self._status_message, "links": self._links(), **self._identity()}
+
+    def _links(self) -> dict[str, Any]:
+        """How the app reaches the robot: directly on the home network, through Roborock's cloud, both or neither."""
+        channel = getattr(self.device, "_channel", None)
+        return {
+            "local": bool(self.device.is_local_connected),
+            "cloud": bool(getattr(channel, "is_mqtt_connected", False)),
+            "ip": self._known_ip(),
+        }
 
     def _identity(self) -> dict[str, Any]:
         d = self.device
@@ -268,6 +309,7 @@ class DeviceController:
             **self._identity(),
             "connected": self.device.is_connected,
             "local": self.device.is_local_connected,
+            "links": self._links(),
             "state": _name(state),
             "phase": phase,
             "job": _name(s.in_cleaning) not in (None, "complete"),
@@ -381,19 +423,77 @@ class DeviceController:
     # ---------- history & freshness ----------
 
     async def watch(self) -> None:
-        """Keep the cleaning history up to date for as long as the app runs."""
+        """Keep the cleaning history and the direct link up to date for as long as the app runs."""
         # Get a head start for the first page load: the saved map now, a fresh one soon.
         await self._load_saved_map()
         self._refresh_soon()
         while True:
             delay = 300.0
             try:
+                await self._ensure_local()
                 delay = await self._history_tick()
             except asyncio.CancelledError:
                 raise
             except Exception as err:  # noqa: BLE001 - try again later
                 _LOGGER.info("Couldn't update the cleaning history: %s", err)
             await asyncio.sleep(delay)
+
+    # ---------- the direct link ----------
+
+    def _known_ip(self) -> str | None:
+        try:
+            return json.loads(self._ip_file.read_text()).get("ip") if self._ip_file and self._ip_file.exists() else None
+        except (OSError, ValueError):
+            return None
+
+    def _save_ip(self, ip: str) -> None:
+        if not self._ip_file or self._known_ip() == ip:
+            return
+        try:
+            self._ip_file.write_text(json.dumps({"ip": ip, "seen": int(time.time())}))
+        except OSError as err:
+            _LOGGER.info("Couldn't save the robot's address: %s", err)
+
+    async def _ensure_local(self) -> None:
+        """Keep the direct link to the robot working even when Roborock's cloud doesn't.
+        python-roborock only learns the robot's address from the cloud, so with the cloud
+        down there was no direct link either. Remember the address, and look for the robot
+        on the home network when it's unknown or has changed."""
+        if self.device.is_local_connected:
+            if ip := await self._cached_ip():
+                self._save_ip(ip)
+            return
+        if not self._cache or time.monotonic() - self._local_tried < LOCAL_RETRY:
+            return
+        self._local_tried = time.monotonic()
+        ip = self._known_ip() or await self._cached_ip()
+        if ip and await self._try_local(ip):
+            return
+        found = await _find_robot(self.device.device_info.local_key, self.device.duid)
+        if found and found != ip and await self._try_local(found):
+            _LOGGER.info("Found the robot on the home network at %s", found)
+
+    async def _cached_ip(self) -> str | None:
+        if not self._cache:
+            return None
+        entry = (await self._cache.get()).device_info.get(self.device.duid)
+        return entry.network_info.ip if entry and entry.network_info else None
+
+    async def _try_local(self, ip: str) -> bool:
+        """Tell python-roborock where the robot is, and open the direct link now."""
+        await _seed_ip(self._cache, self.device.duid, ip)
+        channel = getattr(self.device, "_channel", None)
+        connect = getattr(channel, "_local_connect", None)
+        if connect is not None and not self.device.is_local_connected:
+            try:
+                await connect(prefer_cache=True)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.info("Direct link to %s failed: %s", ip, err)
+        if self.device.is_local_connected:
+            self._save_ip(ip)
+            self._status_failed_at = 0.0  # ask again right away
+            return True
+        return False
 
     async def _history_tick(self) -> float:
         """One look at the robot. Returns how long to wait before the next."""
@@ -814,6 +914,63 @@ def _run(rid: int, record: CleanRecord, grid: Grid | None, source: str, flag: in
     )
 
 
+async def _seed_ip(cache: FileCache | None, duid: str, ip: str) -> None:
+    """Put the robot's address in python-roborock's cache, where its direct link looks for it."""
+    if cache is None:
+        return
+    data = await cache.get()
+    entry = data.device_info.get(duid) or DeviceCacheData()
+    if entry.network_info is None or entry.network_info.ip != ip:
+        entry.network_info = NetworkInfo(ip=ip)
+        data.device_info[duid] = entry
+        await cache.set(data)
+
+
+def _lan_prefix() -> str | None:
+    """This computer's home network, like "192.168.0." (works out the route; sends nothing)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.254.254.254", 1))
+            ip = s.getsockname()[0]
+    except OSError:
+        return None
+    return None if ip.startswith("127.") else ip.rsplit(".", 1)[0] + "."
+
+
+async def _find_robot(local_key: str | None, duid: str) -> str | None:
+    """Look for the robot on the home network: what has a Roborock's port open and completes
+    the handshake. The handshake doesn't check the key, so with two Roborocks on one network
+    this could pick the other one; the address from the cloud replaces it once that's back."""
+    prefix = _lan_prefix()
+    if not prefix or not local_key:
+        return None
+    limit = asyncio.Semaphore(64)
+
+    async def port_open(ip: str) -> str | None:
+        async with limit:
+            try:
+                _, writer = await asyncio.wait_for(asyncio.open_connection(ip, LOCAL_PORT), 0.7)
+            except (OSError, TimeoutError):
+                return None
+            writer.close()
+            return ip
+
+    found = [ip for ip in await asyncio.gather(*(port_open(f"{prefix}{n}") for n in range(1, 255))) if ip]
+    for ip in found:
+        channel = LocalChannel(ip, local_key, duid)
+        try:
+            await asyncio.wait_for(channel.connect(), 12)
+            return ip
+        except Exception:  # noqa: BLE001
+            continue
+        finally:
+            try:
+                channel.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return None
+
+
 def _unpickle(data: bytes) -> Any:
     try:
         return pickle.loads(data)
@@ -967,18 +1124,28 @@ class RoborockService:
                 user_data=UserData.from_dict(self._session["user_data"]),
                 base_url=self._session.get("base_url"),
             )
+            await self._seed_ips()
             self._manager = await create_device_manager(params, cache=self._cache)
             await self._flush_cache()
             for dev in await self._manager.get_devices():
                 if dev.v1_properties is not None:
                     history = History(self._data_dir / f"history-{dev.duid}.json")
-                    ctrl = DeviceController(dev, self._nicknames, history, self._data_dir)
+                    ctrl = DeviceController(dev, self._nicknames, history, self._data_dir, self._cache)
                     self._controllers[dev.duid] = ctrl
                     self._watchers.append(asyncio.create_task(ctrl.watch()))
         except Exception as err:  # surfaced in the UI
             _LOGGER.exception("Failed to connect to Roborock cloud")
             self._connect_error = str(err) or type(err).__name__
             raise
+
+    async def _seed_ips(self) -> None:
+        """Robot addresses remembered from earlier, so the direct link works from the start."""
+        for f in self._data_dir.glob("local-*.json"):
+            try:
+                ip = json.loads(f.read_text())["ip"]
+                await _seed_ip(self._cache, f.stem.removeprefix("local-"), ip)
+            except (OSError, ValueError, KeyError) as err:
+                _LOGGER.info("Ignoring %s: %s", f.name, err)
 
     async def _flush_cache(self) -> None:
         # The cache only speeds up the next start; never let it break anything.

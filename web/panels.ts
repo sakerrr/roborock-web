@@ -86,6 +86,14 @@ function statusSub(st: Status): string {
   }
 }
 
+/** Both ways the app can reach the robot, and whether each is up. */
+export function linksLine(st: Status): string {
+  const l = st.links;
+  if (!l) return "";
+  const dot = (on: boolean) => `<span class="link-dot ${on ? "on" : ""}"></span>`;
+  return `<div class="links-line">${dot(l.local)}Home network${l.ip ? ` <span class="muted">${esc(l.ip)}</span>` : ""}<span class="sep">·</span>${dot(l.cloud)}Roborock cloud</div>`;
+}
+
 /** What went wrong, in plain words, how to fix it, and where it happened. */
 function helpCard(code: string, dock: boolean): string {
   const h = errorHelp(code, dock);
@@ -118,6 +126,7 @@ export function renderStatus(): void {
   const el = $("#status-card");
   if (st.connected === false && st.state == null) {
     el.innerHTML = `<div class="status-state">Can't reach robot</div><div class="status-sub">${esc(st.message || "It may be offline or out of Wi‑Fi range.")}</div>
+      ${linksLine(st)}
       <button class="btn-soft" data-act="reconnect" style="margin-top:14px">Reconnect</button>`;
     return;
   }

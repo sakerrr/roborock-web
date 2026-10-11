@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0f17" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Roborock</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%234c7df0'/%3E%3Ccircle cx='12' cy='9.5' r='2.4' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <!-- Sign in -->
+  <div id="login-view" class="login-wrap" hidden>
+    <div class="card login">
+      <div class="brand-mark" data-icon="robot"></div>
+      <div id="login-step-email">
+        <h2>Connect your robot</h2>
+        <p>Sign in with the email you use in the Roborock app. We'll send you a one-time code.</p>
+        <form id="email-form">
+          <input class="field" id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          <div class="err" id="email-err"></div>
+          <button class="btn-primary" type="submit">Send code</button>
+        </form>
+      </div>
+      <div id="login-step-code" hidden>
+        <h2>Check your inbox</h2>
+        <p>Enter the code sent to <b id="code-email"></b>.</p>
+        <form id="code-form">
+          <input class="field code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="••••••" required>
+          <div class="err" id="code-err"></div>
+          <button class="btn-primary" type="submit">Sign in</button>
+          <button type="button" class="link" id="change-email">Use a different email</button>
+        </form>
+      </div>
+      <div class="fine">Your session stays on this computer (in <code>data/session.json</code>). Nothing is sent anywhere except Roborock's own servers.</div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app-view" class="shell" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" data-icon="robot"></div>
+        <div class="brand-text">
+          <h1 id="robot-name">Robot</h1>
+          <select id="device-select" hidden></select>
+          <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">Connecting…</span></div>
+        </div>
+      </div>
+      <nav class="tabs">
+        <button data-tab="home" class="active"><svg class="i"><use href="#i-map"/></svg><span>Home</span></button>
+        <button data-tab="settings"><svg class="i"><use href="#i-sliders"/></svg><span>Settings</span></button>
+      </nav>
+    </header>
+
+    <div id="center-msg" class="center-msg" hidden></div>
+
+    <section id="tab-home" hidden>
+      <div class="layout">
+        <aside class="side">
+          <div class="card" id="status-card"></div>
+          <div class="card action-card" id="action-card"></div>
+          <div class="card" id="mode-card"></div>
+          <div class="card" id="dock-card" hidden></div>
+        </aside>
+        <div class="main">
+          <div class="card" id="map-card">
+            <div class="card-head">
+              <h3 class="card-title"><svg class="i"><use href="#i-map"/></svg><span id="map-title">Map</span></h3>
+              <div class="head-tools" id="head-normal">
+                <select class="map-select" id="map-select" hidden></select>
+                <div class="map-tools" id="map-tools">
+                  <button data-tool="rooms" class="active" title="Pick rooms"><svg class="i"><use href="#i-rooms"/></svg><span>Rooms</span></button>
+                  <button data-tool="zone" title="Draw a zone"><svg class="i"><use href="#i-zone"/></svg><span>Zone</span></button>
+                  <button data-tool="goto" title="Send robot to a spot"><svg class="i"><use href="#i-target"/></svg><span>Go to</span></button>
+                </div>
+                <button class="btn-soft" data-act="edit-start" title="Invisible walls, no-go zones and rooms"><svg class="i"><use href="#i-pencil"/></svg><span>Edit map</span></button>
+              </div>
+              <div class="head-tools" id="head-edit" hidden>
+                <div class="seg small" id="edit-modes">
+                  <button data-emode="walls" class="active">Walls &amp; zones</button>
+                  <button data-emode="rooms">Rooms</button>
+                </div>
+                <button class="btn-soft" data-act="edit-done">Done</button>
+              </div>
+            </div>
+            <div class="map-stage" id="map-stage">
+              <div class="map-zoom" id="map-zoom">
+                <button data-zoom="in" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><svg class="i"><use href="#i-plus"/></svg></button>
+                <button data-zoom="out" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out"><svg class="i"><use href="#i-minus"/></svg></button>
+                <span class="sep"></span>
+                <button data-zoom="robot" title="Center on robot (R)" aria-label="Center on robot"><svg class="i"><use href="#i-robot"/></svg></button>
+                <button data-zoom="fit" id="zoom-fit" title="Fit whole map (0)" aria-label="Fit whole map"><svg class="i"><use href="#i-fit"/></svg></button>
+              </div>
+              <div class="edit-tools" id="edit-tools" hidden></div>
+              <div class="map-empty" id="map-empty"><div class="spinner"></div>Loading map…</div>
+              <div class="map-inner rooms" id="map-inner" hidden>
+                <img id="map-img" alt="Map of your home" draggable="false">
+                <canvas id="map-sel"></canvas>
+                <svg class="map-shapes" id="map-shapes"></svg>
+                <svg class="map-draw" id="map-draw"></svg>
+                <div id="map-labels"></div>
+                <button class="marker shape-delete" id="shape-delete" data-act="edit-delete" title="Delete (⌫)" aria-label="Delete" hidden><svg class="i"><use href="#i-trash"/></svg></button>
+                <div class="marker dock-marker" id="dock-marker" hidden><svg class="i"><use href="#i-bolt"/></svg></div>
+                <div class="marker" id="robot-marker" hidden><div class="robot"><span class="nose"></span></div></div>
+              </div>
+            </div>
+            <div class="map-foot" id="map-foot"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-settings" hidden>
+      <div class="settings-grid" id="settings"></div>
+    </section>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-robot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="2.2"/><path d="M7.5 15.2c1.2 1 2.7 1.6 4.5 1.6s3.3-.6 4.5-1.6"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.4-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4.2" height="15" rx="1.4"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.4"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5h4v5"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+      <symbol id="i-zone" viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2M19 3a2 2 0 0 1 2 2M21 19a2 2 0 0 1-2 2M5 21a2 2 0 0 1-2-2M9 3h1.5M13.5 3H15M9 21h1.5M13.5 21H15M3 9v1.5M3 13.5V15M21 9v1.5M21 13.5V15"/></symbol>
+      <symbol id="i-rooms" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 12h8M11 3v18M11 15h10"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 3.5 3.5 5.7v14.8L9 18.3l6 2.2 5.5-2.2V3.5L15 5.7z"/><path d="M9 3.5v14.8M15 5.7v14.8"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1.5 14h5M9.5 8h5M17.5 16h5"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
+      <symbol id="i-fan" viewBox="0 0 24 24"><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 2.7s6 6.3 6 11.3a6 6 0 0 1-12 0c0-5 6-11.3 6-11.3z"/></symbol>
+      <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><path d="M8.5 19h9a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15.5"/><circle cx="18" cy="5" r="2.5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3.5 6h17M18.5 6v13.5a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V6M8.5 6V4.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V6"/></symbol>
+      <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 7c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2c1.3 0 1.9.5 2.5 1M2 12.5c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2c1.3 0 1.9.5 2.5 1M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2c1.3 0 1.9.5 2.5 1"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.6a11 11 0 0 1 14 0M1.5 9a16 16 0 0 1 21 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2.5v6H6l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+      <symbol id="i-light" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2.5 9.5 5-9.5 5-9.5-5z"/><path d="m2.5 12 9.5 5 9.5-5M2.5 16.5l9.5 5 9.5-5"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5.4 5.1l-8.6 8.6a2.1 2.1 0 0 1-3-3l8.6-8.6a4 4 0 0 0-2.4-2.1z"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="m15 5 4 4"/></symbol>
+      <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M5 3.5 11.5 20l2.4-6.6 6.6-2.4z"/></symbol>
+      <symbol id="i-wall" viewBox="0 0 24 24"><path d="M6.5 17.5 17.5 6.5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></symbol>
+      <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+      <symbol id="i-drop-off" viewBox="0 0 24 24"><path d="M9 5.6c1.6-1.9 3-3 3-3s6 6.3 6 11.3c0 .9-.2 1.8-.5 2.6M7.1 8.6C6.4 10.4 6 12.3 6 14a6 6 0 0 0 10.5 4M3 3l18 18"/></symbol>
+      <symbol id="i-merge" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/><path d="M11 7h3a3 3 0 0 1 3 3v3"/></symbol>
+      <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
+      <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></symbol>
+      <symbol id="i-dock" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 17h8M9 7h6"/></symbol>
+    </defs>
+  </svg>
+  <script src="/static/app.js"></script>
+</body>
+</html>

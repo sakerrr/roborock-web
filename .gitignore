@@ -1,0 +1,11 @@
+# Your Roborock session token and local state: never commit
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Atomic-write leftovers and OS files
+*.tmp
+.DS_Store

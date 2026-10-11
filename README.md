@@ -1,0 +1,95 @@
+# Roborock web
+
+A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S**; it should also work with other V1-protocol models such as the S7/S8/Q-series). It's designed for desktop and works on a phone too.
+
+- **Live map** with room names, the robot and the dock. It updates every few seconds while the robot cleans.
+- **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. You can choose 1–3 passes.
+- **Move and zoom** the map like Google Maps: two-finger swipe, pinch, drag.
+- **Edit the map**: invisible walls, no-go and no-mop zones, and merging, splitting or renaming rooms.
+- **Start / pause / resume / stop / dock / locate**.
+- **Cleaning mode**: Vacuum, Vac & Mop, Mop, Custom or SmartPlan. You can also set suction, water flow and mop route.
+- **Dock**: empty the bin, wash the mop, dry the mop, and see tank and dust bag warnings.
+- **Settings**: volume, do not disturb, child lock, status light, carpet boost, auto-empty mode, mop wash mode, smart mop washing, auto drying.
+- **Maintenance** (brush, filter and sensor life, with reset), **routines**, **cleaning history**, and device info.
+
+It talks to the robot through [python-roborock](https://github.com/python-roborock/python-roborock), the same library Home Assistant uses. It goes over your local network when it can and through the Roborock cloud otherwise.
+
+## Start
+
+macOS: double-click **`start.command`**. Or, from a terminal:
+
+```bash
+./start.command            # your robot
+./start.command --demo     # a simulated Qrevo S, no account needed
+```
+
+The first run sets up a Python environment (it needs Python 3.11+ or [uv](https://docs.astral.sh/uv/)). After that, the app opens at http://localhost:8765.
+
+Sign in with the email you use in the **Roborock app**. You'll get a one-time code by email, just like the app sends. Mi Home / Xiaomi Home accounts are not supported.
+
+### Options
+
+| flag | |
+|---|---|
+| `--demo` | Simulated robot and apartment, so you can try everything safely |
+| `--port 8765` | Change the port |
+| `--host 0.0.0.0` | Open it from other devices on your Wi‑Fi (see the note below) |
+| `--no-browser` | Don't open a browser window on start |
+| `--debug` | Verbose logs |
+
+## Moving around the map
+
+| | Trackpad | Mouse | Touch screen |
+|---|---|---|---|
+| Move | Two-finger swipe, or click and drag | Drag | One finger, once zoomed in |
+| Zoom | Pinch | Scroll wheel | Pinch |
+
+Zoom always heads toward your cursor or fingers, and a quick drag glides a little when you let go. The buttons in the corner zoom, **center on the robot** (or press **R**) and **fit the whole map** (or press **0**). The arrow keys and **+ / −** work too.
+
+While you're drawing a cleaning zone or editing walls, dragging draws instead of moving the map. A two-finger swipe still moves it, or hold **Space** and drag.
+
+## Editing the map
+
+Click **Edit map** above the map. The robot needs to be docked or paused.
+
+**Walls & zones**: pick a tool on the left and drag on the map:
+
+- **Invisible wall**: a line the robot won't cross
+- **No-go zone**: an area the robot stays out of
+- **No-mop zone**: an area it vacuums but won't mop
+
+Click a wall or zone to move it, drag its dots to resize it, or delete it (trash button or **Delete** key). **Undo** with ⌘Z. Nothing reaches the robot until you click **Save to robot**. The robot replaces all its walls and zones in one go, so the app always sends the full set. It can store 68 corner points in total (a wall uses 2, a zone 4).
+
+**Rooms**:
+
+- **Merge** two neighbouring rooms into one.
+- **Split** a room by drawing a line across it, wall to wall.
+- **Rename** a room. This only changes the name in this app (saved in `data/room_names.json`). There's no documented way to rename rooms in Roborock's cloud, so the Roborock app keeps its own names. Rename there to change a name everywhere.
+
+Merging and splitting change the map on your robot, and the app asks before doing either. You can undo one by doing the opposite (split what you merged, merge what you split).
+
+If a map has no-carpet zones made in the Roborock app, the editor warns you: the app can't send those back, so saving walls and zones here may remove them.
+
+## Privacy and security
+
+- Your Roborock session token is stored in `data/session.json` (readable only by you). **Sign out** in Settings, or delete the `data/` folder, to remove it.
+- The app only talks to Roborock's servers and to your robot.
+- By default it only listens on `localhost`. With `--host 0.0.0.0`, **anyone on your network can control the robot**. There's no password, so only do this on a network you trust.
+
+## Good to know
+
+- The map comes from the robot. If it says "No map yet", let it finish one full clean first.
+- If the robot has several saved floors, a map picker appears next to the map tools.
+- Room names come from your Roborock account. Rename rooms in the official app.
+- Settings your model doesn't support are simply hidden.
+- Roborock limits login attempts (a few per minute, ~10 per hour). If code requests fail, wait a bit.
+
+## Files
+
+| | |
+|---|---|
+| `server.py` | Web server and API |
+| `robot.py` | Login session and robot control (python-roborock) |
+| `maprender.py` | Turns the robot's raw map into a soft PNG, a room hit-mask, and walls/zones for the editor |
+| `demo.py` | The simulated robot behind `--demo` |
+| `static/` | The UI (plain HTML/CSS/JS, no build step) |

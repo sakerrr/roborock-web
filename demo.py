@@ -732,6 +732,9 @@ class DemoService:
     async def reconnect(self) -> None:
         pass
 
+    async def login_password(self, email: str, password: str) -> None:
+        pass
+
     async def login(self, code: str) -> None:
         pass
 

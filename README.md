@@ -116,7 +116,8 @@ If a map has no-carpet zones made in the Roborock app, the editor warns you: the
 - If the robot has several saved floors, a map picker appears next to the map tools.
 - Room names come from your Roborock account. Rename rooms in the official app.
 - Settings your model doesn't support are simply hidden. If the robot can't be reached, Settings says so, and its settings come back by themselves once it's online.
-- Roborock limits sign-in codes (a few per minute, about 10 an hour). If it stops sending them, the app keeps the code box open, so a code you already got by email still works (or use **Already have a code?**). Otherwise wait about an hour.
+- Roborock limits sign-in codes (a few per minute, about 10 an hour, 20 a day). If it stops sending them, the app keeps the code box open, so a code you already got by email still works (or use **Already have a code?**). The block often clears within an hour but can last until the next day, and every new try can extend it.
+- If your Roborock account has a password, **Sign in with password instead** skips email codes altogether. The password goes only to Roborock; the app keeps just the session, as with a code.
 - If the robot or Roborock isn't responding, use **Reconnect**. It retries with your saved sign-in. Signing out means you'll need a new code to get back in.
 
 ## Development

@@ -54,6 +54,10 @@ TOO_MANY_CODES = (
     "It often clears within an hour, but after many tries in one day it can take until the next day, "
     "and each new try can extend it. If a code arrived by email in the last few minutes, enter it below."
 )
+CODES_THROTTLED = (
+    "To keep Roborock from blocking your account, this app asks for only a few codes a minute and an hour. "
+    "Wait a minute and try again. If a code arrived by email in the last few minutes, enter it below."
+)
 SETTING_TIMEOUT = 8.0
 
 S = RoborockStateCode
@@ -882,24 +886,42 @@ class RoborockService:
         email = email.strip()
         if "@" not in email:
             raise ValueError("Enter the email you use in the Roborock app")
+        client = self._client(email)
+        self._code_note = None
+        if send:
+            # Either way a code sent earlier can still be good, so keep the code step open.
+            try:
+                await client.request_code_v4()
+            except RoborockTooFrequentCodeRequests:  # Roborock refused
+                self._code_note = TOO_MANY_CODES
+            except RoborockRateLimit:  # python-roborock's own limit, to keep accounts from being blocked
+                self._code_note = CODES_THROTTLED
+        self._pending = (email, client)
+
+    def _client(self, email: str) -> RoborockApiClient:
         client = self._clients.get(email.lower())
         if client is None:
             client = self._clients[email.lower()] = RoborockApiClient(username=email)
-        self._code_note = None
-        if send:
-            try:
-                await client.request_code_v4()
-            except (RoborockTooFrequentCodeRequests, RoborockRateLimit):
-                # Roborock stops sending codes for a while after a few requests. One that was
-                # sent earlier can still be good, so keep the code step open.
-                self._code_note = TOO_MANY_CODES
-        self._pending = (email, client)
+        return client
 
     async def login(self, code: str) -> None:
         if self._pending is None:
             raise ValueError("Request a code first")
         email, client = self._pending
-        user_data = await client.code_login_v4(code.strip())
+        await self._signed_in(email, client, await client.code_login_v4(code.strip()))
+
+    async def login_password(self, email: str, password: str) -> None:
+        """Sign in with the account's password: no email code, so Roborock's code limit doesn't apply.
+        The password goes to Roborock only; it's never stored or logged."""
+        email = email.strip()
+        if "@" not in email:
+            raise ValueError("Enter the email you use in the Roborock app")
+        if not password:
+            raise ValueError("Enter your Roborock password")
+        client = self._client(email)
+        await self._signed_in(email, client, await client.pass_login(password))
+
+    async def _signed_in(self, email: str, client: RoborockApiClient, user_data: UserData) -> None:
         self._session = {
             "email": email,
             "base_url": await client.base_url,

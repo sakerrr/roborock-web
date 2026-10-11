@@ -4,7 +4,7 @@
 
 import { $, $$, closest, cssVar, esc, icon, pct } from "../dom";
 import { S, type Layers } from "../state";
-import type { ObstacleKind, Polyline } from "../types";
+import type { Obstacle, ObstacleKind, Polyline } from "../types";
 import { inner, mapImg } from "./elements";
 import { planImage, sync3D } from "./views";
 
@@ -19,10 +19,40 @@ export const OBSTACLE_ICON: Record<ObstacleKind, string> = {
   clothes: "shirt",
   pet: "paw",
   furniture: "box",
-  obstacle: "alert",
+  obstacle: "dot", // something it steered around, type unknown
 };
 
-const MOP_WIDTH_M = 0.15; // drawn narrower than the real mop pads so the map stays readable
+export interface ObstacleGroup {
+  x: number;
+  y: number;
+  kind: ObstacleKind;
+  count: number;
+  title: string;
+}
+
+/** Merge obstacles within half a metre into one marker, so a wall of bumps doesn't pile up. */
+export function groupObstacles(obstacles: Obstacle[], scale: number): ObstacleGroup[] {
+  const radius = (0.5 / 0.05) * scale;
+  const groups: { xs: number; ys: number; items: Obstacle[] }[] = [];
+  for (const o of obstacles) {
+    const g = groups.find((g) => Math.hypot(g.xs / g.items.length - o.x, g.ys / g.items.length - o.y) <= radius);
+    if (g) {
+      g.items.push(o);
+      g.xs += o.x;
+      g.ys += o.y;
+    } else groups.push({ xs: o.x, ys: o.y, items: [o] });
+  }
+  return groups.map(({ xs, ys, items }) => {
+    // Show a recognised type (a cable, shoes…) when the group has one.
+    const kind = (items.find((i) => i.kind !== "obstacle") ?? items[0]).kind;
+    const counts = new Map<string, number>();
+    for (const i of items) counts.set(i.label, (counts.get(i.label) ?? 0) + 1);
+    let title = [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(", ");
+    if (kind === "obstacle") title += ": something it found and steered around";
+    if (items.some((i) => i.photo)) title += " (photo in the Roborock app)";
+    return { x: xs / items.length, y: ys / items.length, kind, count: items.length, title };
+  });
+}
 
 const points = (line: Polyline) => line.map(([x, y]) => `${x},${y}`).join(" ");
 
@@ -31,10 +61,11 @@ export function renderThings(): void {
   const m = S.map;
   if (!m) return;
   infoSvg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
-  const mopWidth = (MOP_WIDTH_M / 0.05) * m.scale;
   let svg = "";
-  for (const line of m.mop_path ?? []) svg += `<polyline class="mop-path" stroke-width="${mopWidth}" points="${points(line)}"/>`;
+  // A hairline at half strength: dense criss-cross runs build up softly instead of
+  // turning into a white blanket. Mopped stretches get a faint blue tint on top.
   for (const line of m.path ?? []) svg += `<polyline class="path" points="${points(line)}"/>`;
+  for (const line of m.mop_path ?? []) svg += `<polyline class="mop-path" points="${points(line)}"/>`;
   for (const area of m.no_carpet ?? []) svg += `<polygon class="no-carpet" points="${points(area)}"/>`;
   for (const [x0, y0, x1, y1] of m.zones ?? []) {
     svg += `<rect class="active-zone" x="${Math.min(x0, x1)}" y="${Math.min(y0, y1)}" width="${Math.abs(x1 - x0)}" height="${Math.abs(y1 - y0)}"/>`;
@@ -42,10 +73,10 @@ export function renderThings(): void {
   for (const line of m.goto_path ?? []) svg += `<polyline class="goto-route" points="${points(line)}"/>`;
   infoSvg.innerHTML = svg;
 
-  const marker = (cls: string, x: number, y: number, title: string, ic: string) =>
-    `<span class="thing ${cls}" style="left:${pct(x, m.width)};top:${pct(y, m.height)}" title="${esc(title)}">${icon(ic)}</span>`;
+  const marker = (cls: string, x: number, y: number, title: string, ic: string, count = 1) =>
+    `<span class="thing ${cls}" style="left:${pct(x, m.width)};top:${pct(y, m.height)}" title="${esc(title)}">${icon(ic)}${count > 1 ? `<b class="count">${count}</b>` : ""}</span>`;
   thingsEl.innerHTML =
-    (m.obstacles ?? []).map((o) => marker(o.kind, o.x, o.y, o.label + (o.photo ? " (photo in the Roborock app)" : ""), OBSTACLE_ICON[o.kind])).join("") +
+    groupObstacles(m.obstacles ?? [], m.scale).map((g) => marker(g.kind, g.x, g.y, g.title, OBSTACLE_ICON[g.kind], g.count)).join("") +
     (m.goto ? marker("goto", m.goto[0], m.goto[1], "Where the robot is heading", "target") : "");
 
   carpetsImg.src = carpetImage() || "data:,";

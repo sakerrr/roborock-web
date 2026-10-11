@@ -207,16 +207,29 @@ def _route(a: tuple[float, float], b: tuple[float, float]) -> list[tuple[float, 
     return list(reversed(pts))
 
 
-def _serpentine(rect: tuple[float, float, float, float]) -> list[tuple[float, float]]:
+def _serpentine(rect: tuple[float, float, float, float], step: float = 4) -> list[tuple[float, float]]:
     x0, y0, x1, y1 = rect
     pts: list[tuple[float, float]] = []
     y, flip = y0 + 3, False
     while y <= y1 - 3:
         row = [(x0 + 3, y), (x1 - 3, y)]
         pts.extend(reversed(row) if flip else row)
-        y += 4
+        y += step
         flip = not flip
     return pts
+
+
+def _last_run() -> list[tuple[float, float]]:
+    """A finished deep clean, so the demo map shows a path from the start like a real
+    one does: an edge run round each room, then lanes one way and across (Deep+)."""
+    path: list[tuple[float, float]] = [DOCKED_POS]
+    for _, (x0, y0, x1, y1) in ROOMS.values():
+        edge = [(x0 + 2.0, y0 + 2.0), (x1 - 2.0, y0 + 2.0), (x1 - 2.0, y1 - 2.0), (x0 + 2.0, y1 - 2.0), (x0 + 2.0, y0 + 2.0)]
+        lanes = _serpentine((x0, y0, x1, y1), 3)
+        across = [(x, y) for y, x in _serpentine((y0, x0, y1, x1), 3)]
+        for leg in (edge, lanes, across):
+            path += _route(path[-1], leg[0]) + leg
+    return path + _route(path[-1], DOCKED_POS) + [DOCKED_POS]
 
 
 class DemoController:
@@ -231,7 +244,7 @@ class DemoController:
         self.fan, self.water, self.mop = PRESETS["vac_and_mop"]
         self.pos = DOCKED_POS
         self.angle = 90.0
-        self.path: list[tuple[float, float]] = []
+        self.path: list[tuple[float, float]] = _last_run()
         self._route: list[tuple[float, float]] = []
         self._route_kind = ""
         self._last_tick = time.monotonic()
@@ -264,6 +277,9 @@ class DemoController:
             (*_mm((96, 63)), 2),  # shoes at the hallway door
             (*_mm((152, 40)), 1),  # pet waste in the kitchen
             (*_mm((50, 112)), 10),  # clothes in the bedroom
+            # Bumps it couldn't name: strung along the wall by the bedroom door, and at the kitchen door.
+            *((*_mm((x, 66)), 99) for x in (12, 15, 18, 22, 27, 31, 34)),
+            *((*_mm((89, y)), 99) for y in (23, 27, 31)),
         ]
         self.no_carpet = [_rect_mm(74, 14, 84, 22)]  # "this corner of the rug isn't carpet"
         self.active_zone: tuple[int, int, int, int] | None = None

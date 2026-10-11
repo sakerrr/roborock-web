@@ -13,7 +13,7 @@ const WALL_H = 11; // 55 cm: low enough to see into rooms from most angles
 const FURNITURE_H = 6;
 const RUG_H = 0.6; // carpets stand a little proud of the floor
 const PATH_Y = RUG_H + 0.08;
-const MOP_WIDTH = 3; // mopped strip, drawn narrower than the pads so the map stays readable
+const PATH_WIDTH = 0.25; // a hairline, so dense runs don't turn into a white blanket
 const ROBOT_R = 3.5; // the robot is about 35 cm across
 const ROBOT_H = 2;
 const MIN_PITCH = 0.08; // radians from straight down
@@ -32,6 +32,7 @@ export interface Marker3D {
   cls: string;
   title: string;
   icon: string;
+  count?: number;
 }
 
 export interface Label3D {
@@ -395,10 +396,10 @@ export class Map3D {
     const world = (line: Polyline): Pt[] => line.map(([x, y]): Pt => [x / this.scale - this.W / 2, y / this.scale - this.H / 2]);
     const flat = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
-    const mop = flat(0xffffff, 0.32);
-    const vac = flat(0xffffff, 0.95);
-    for (const line of m.mop_path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), MOP_WIDTH, PATH_Y - 0.02), mop));
-    for (const line of m.path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), 0.3, PATH_Y), vac));
+    const vac = flat(0xffffff, 0.5);
+    const mop = flat(0x96cdff, 0.45); // mopped stretches get a faint blue tint
+    for (const line of m.path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), PATH_WIDTH, PATH_Y), vac));
+    for (const line of m.mop_path ?? []) this.pathGroup.add(new THREE.Mesh(ribbon(world(line), PATH_WIDTH, PATH_Y + 0.01), mop));
 
     const outline = (pts: Pt[], color: number, fill: number, group: THREE.Group) => {
       const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -420,7 +421,7 @@ export class Map3D {
 
     this.markers = markers.map((k) => new THREE.Vector3(k.x / this.scale - this.W / 2, 1.5, k.y / this.scale - this.H / 2));
     this.markersEl.innerHTML = markers
-      .map((k) => `<span class="thing ${k.cls}" title="${esc(k.title)}"><svg class="i"><use href="#i-${k.icon}"/></svg></span>`)
+      .map((k) => `<span class="thing ${k.cls}" title="${esc(k.title)}"><svg class="i"><use href="#i-${k.icon}"/></svg>${(k.count ?? 1) > 1 ? `<b class="count">${k.count}</b>` : ""}</span>`)
       .join("");
     this.setLayers(this.layers);
   }

@@ -476,10 +476,11 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .map-inner img.map-carpets { pointer-events: none; filter: var(--map-filter); }
 .map-inner.plan img.map-carpets { display: none; }
 .map-inner svg.map-info { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.map-info .path { fill: none; stroke: rgba(255, 255, 255, 0.95); stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.map-info .mop-path { fill: none; stroke: rgba(255, 255, 255, 0.34); stroke-linejoin: round; stroke-linecap: round; }
-.map-inner.plan .map-info .path { stroke: var(--accent); stroke-opacity: 0.6; stroke-width: 0.9; }
-.map-inner.plan .map-info .mop-path { stroke: rgba(76, 125, 240, 0.12); }
+.map-info .path, .map-info .mop-path { fill: none; stroke-width: 0.8; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.map-info .path { stroke: rgba(255, 255, 255, 0.5); }
+.map-info .mop-path { stroke: rgba(150, 205, 255, 0.45); }
+.map-inner.plan .map-info .path { stroke: var(--accent); stroke-opacity: 0.45; stroke-width: 0.7; }
+.map-inner.plan .map-info .mop-path { stroke: rgba(76, 125, 240, 0.3); stroke-width: 0.7; }
 .map-info .no-carpet { fill: rgba(232, 150, 30, 0.22); stroke: #e0900f; stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
 .map-info .active-zone { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 5; vector-effect: non-scaling-stroke; }
 .map-info .goto-route { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 1 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -492,7 +493,9 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .thing.clothes { color: #db2777; }
 .thing.pet { color: #059669; }
 .thing.furniture { color: #64748b; }
-.thing.obstacle { color: #dc4146; }
+.thing.obstacle { width: 18px; height: 18px; color: #7d8799; border-width: 1.5px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25); }
+.thing.obstacle svg { width: 8px; height: 8px; }
+.thing .count { position: absolute; top: -7px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--text); color: var(--card); font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; font-style: normal; }
 .thing.goto { background: var(--accent); color: #fff; border-color: #fff; cursor: default; }
 .map-inner.hide-path .map-info .path, .map-inner.hide-path .map-info .mop-path { display: none; }
 .map-inner.hide-carpets img.map-carpets { display: none; }
@@ -509,7 +512,7 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .layers-pop label:hover { background: var(--surface); }
 .layers-pop input { margin-left: auto; width: 16px; height: 16px; accent-color: var(--accent); }
 .layers-pop .sw { width: 24px; height: 16px; border-radius: 5px; flex: none; display: grid; place-items: center; }
-.layers-pop .sw.path { background: linear-gradient(transparent 5px, rgba(255, 255, 255, 0.45) 5px, rgba(255, 255, 255, 0.45) 11px, transparent 11px), linear-gradient(transparent 7px, #fff 7px, #fff 9px, transparent 9px), #d68460; }
+.layers-pop .sw.path { background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(255, 255, 255, 0.6) 4px 5px), linear-gradient(transparent 7px, rgba(255, 255, 255, 0.6) 7px, rgba(255, 255, 255, 0.6) 8px, transparent 8px), #68a09a; }
 .layers-pop .sw.carpets { background: repeating-linear-gradient(-45deg, rgba(80, 52, 24, 0.55) 0 2px, #efe3cc 2px 5px); }
 .layers-pop .sw.obstacles { color: #d97706; background: var(--surface); }
 .layers-pop .sw.obstacles svg { width: 13px; height: 13px; }

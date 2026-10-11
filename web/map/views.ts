@@ -6,7 +6,7 @@ import { S, type ViewMode } from "../state";
 import { drawSelection, refreshMapOverlays, roomAt, setTool, toggleRoom } from "./core";
 import { itemPx } from "./editor";
 import { inner, mapImg, selCanvas, stage } from "./elements";
-import { OBSTACLE_ICON } from "./layers";
+import { groupObstacles, OBSTACLE_ICON } from "./layers";
 import { applyView } from "./panzoom";
 
 export function setViewMode(mode: ViewMode): void {
@@ -77,7 +77,9 @@ export function sync3D(mapChanged = false): void {
   if (mapChanged) map3d.setMap(m, S.mask, m.mask);
   map3d.setLabels(m.rooms.map((r) => ({ id: r.id, name: r.name, x: r.x, y: r.y, sel: S.selected.includes(r.id) })));
   map3d.setRestrictions(m.frame ? m.restrictions.map((r) => ({ type: r.type, pts: itemPx(r) })) : []);
-  const markers: Marker3D[] = (m.obstacles ?? []).map((o) => ({ x: o.x, y: o.y, cls: o.kind, title: o.label, icon: OBSTACLE_ICON[o.kind] }));
+  const markers: Marker3D[] = groupObstacles(m.obstacles ?? [], m.scale).map((g) => ({
+    x: g.x, y: g.y, cls: g.kind, title: g.title, icon: OBSTACLE_ICON[g.kind], count: g.count,
+  }));
   if (m.goto) markers.push({ x: m.goto[0], y: m.goto[1], cls: "goto", title: "Where the robot is heading", icon: "target" });
   map3d.setThings(m, markers);
   map3d.setLayers(S.layers);

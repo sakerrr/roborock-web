@@ -3,9 +3,11 @@
 // The colour map becomes the floor, walls and furniture are raised from the
 // room mask, and the robot, dock, invisible walls and zones are small models on
 // top. One scene unit is one map block (5 cm). Controls follow the 2D map:
-// drag rotates, a two-finger swipe moves, pinch or the wheel zooms.
+// drag turns, a two-finger swipe moves, pinch or the wheel zooms.
 
-import * as THREE from "./vendor/three.module.min.js";
+import * as THREE from "three";
+import type { Pt } from "./state";
+import type { MapPayload, Mask, Point, RestrictionType } from "./types";
 
 const WALL_H = 11; // 55 cm: low enough to see into rooms from most angles
 const FURNITURE_H = 6;
@@ -14,19 +16,56 @@ const ROBOT_H = 2;
 const MIN_PITCH = 0.08; // radians from straight down
 const MAX_PITCH = 1.3;
 
-export function createMap3D(container, hooks) {
+export interface Map3DHooks {
+  roomAt(p: Point): number;
+  onRoomClick(id: number): void;
+  onHover(id: number): void;
+}
+
+export interface Label3D {
+  id: number;
+  name: string;
+  x: number; // base px
+  y: number;
+  sel: boolean;
+}
+
+interface View {
+  tx: number;
+  tz: number;
+  dist: number;
+  yaw: number;
+  pitch: number;
+}
+
+interface RobotPose {
+  x: number;
+  z: number;
+  a: number;
+}
+
+type Drag =
+  | { type: "pinch"; d: number; m: Point; angle: number; moved: true }
+  | { type: "pan" | "orbit"; x: number; y: number; x0: number; y0: number; moved: boolean };
+
+type SafariGesture = Event & { scale: number; clientX: number; clientY: number };
+
+export function createMap3D(container: HTMLElement, hooks: Map3DHooks): Map3D {
   return new Map3D(container, hooks);
 }
 
-function css(name, fallback) {
+function css(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
+const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESC[c] ?? c);
+
 // Cover a grid of cells with as few rectangles as possible ("greedy meshing"),
 // so a whole wall becomes a handful of boxes instead of hundreds of cubes.
-function rectangles(w, h, test) {
+function rectangles(w: number, h: number, test: (i: number) => boolean): [number, number, number, number][] {
   const used = new Uint8Array(w * h);
-  const out = [];
+  const out: [number, number, number, number][] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -48,19 +87,49 @@ function rectangles(w, h, test) {
   return out;
 }
 
-class Map3D {
-  constructor(container, hooks) {
+export class Map3D {
+  spaceDown = false;
+
+  private readonly container: HTMLElement;
+  private readonly hooks: Map3DHooks;
+  private active = false;
+  private W = 1;
+  private H = 1;
+  private scale = 4;
+  private maskKey = "";
+  private floorSrc = "";
+  private view: View = { tx: 0, tz: 0, dist: 100, yaw: 0, pitch: 0.95 };
+  private fitDist = 100;
+  private camAnim: { from: View; to: View; start: number; ms: number } | null = null;
+  private robotAnim: { from: RobotPose; to: RobotPose; start: number; ms: number } | null = null;
+  private hover = 0;
+  private raf = 0;
+  private labels: (Label3D & { pos: THREE.Vector3 })[] = [];
+
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly labelsEl: HTMLDivElement;
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.PerspectiveCamera(32, 1, 1, 50000);
+  private readonly hemi = new THREE.HemisphereLight(0xffffff, 0xd8e0ec, 2.1);
+  private readonly sun = new THREE.DirectionalLight(0xffffff, 1.5);
+  private readonly floorTex = new THREE.Texture();
+  private readonly floorMat: THREE.MeshStandardMaterial;
+  private readonly floor: THREE.Mesh;
+  private selTex: THREE.CanvasTexture | null = null;
+  private readonly selMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  private readonly selection: THREE.Mesh;
+  private readonly wallMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
+  private readonly furnitureMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
+  private walls: THREE.InstancedMesh | null = null;
+  private furniture: THREE.InstancedMesh | null = null;
+  private readonly restrictions = new THREE.Group();
+  private readonly accentMat = new THREE.MeshStandardMaterial({ color: 0x4c7df0, roughness: 0.4, emissive: 0x4c7df0, emissiveIntensity: 0.25 });
+  private readonly robot: THREE.Group;
+  private readonly dock: THREE.Group;
+
+  constructor(container: HTMLElement, hooks: Map3DHooks) {
     this.container = container;
-    this.hooks = hooks; // { roomAt({x,y}) -> id, onRoomClick(id), onHover(id) }
-    this.active = false;
-    this.W = 1;
-    this.H = 1;
-    this.scale = 4;
-    this.maskKey = "";
-    this.view = { tx: 0, tz: 0, dist: 100, yaw: 0, pitch: 0.95 };
-    this.fitDist = 100;
-    this.robotAnim = null;
-    this.hover = 0;
+    this.hooks = hooks;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -75,22 +144,14 @@ class Map3D {
     this.labelsEl.className = "map3d-labels";
     container.appendChild(this.labelsEl);
 
-    const scene = new THREE.Scene();
-    this.scene = scene;
-    this.camera = new THREE.PerspectiveCamera(32, 1, 1, 50000);
-
-    this.hemi = new THREE.HemisphereLight(0xffffff, 0xd8e0ec, 2.1);
-    scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.4;
-    scene.add(sun, sun.target);
-    this.sun = sun;
+    this.scene.add(this.hemi);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.4;
+    this.scene.add(this.sun, this.sun.target);
 
     // Floor: the same image as the 2D map, plus the selection overlay on top.
-    this.floorTex = new THREE.Texture();
     this.floorTex.colorSpace = THREE.SRGBColorSpace;
     this.floorTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     // alphaTest cuts out the unmapped area around the home instead of painting it black.
@@ -98,38 +159,30 @@ class Map3D {
     this.floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.floorMat);
     this.floor.rotation.x = -Math.PI / 2;
     this.floor.receiveShadow = true;
-    scene.add(this.floor);
+    this.scene.add(this.floor);
 
-    this.selTex = null;
-    this.selMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
     this.selection = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.selMat);
     this.selection.rotation.x = -Math.PI / 2;
     this.selection.position.y = 0.06;
     this.selection.renderOrder = 1;
-    scene.add(this.selection);
+    this.scene.add(this.selection);
 
-    this.wallMat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 });
-    this.furnitureMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 });
-    this.walls = null;
-    this.furniture = null;
-    this.restrictions = new THREE.Group();
-    scene.add(this.restrictions);
-
+    this.scene.add(this.restrictions);
     this.robot = this.makeRobot();
     this.robot.visible = false;
-    scene.add(this.robot);
+    this.scene.add(this.robot);
     this.dock = this.makeDock();
     this.dock.visible = false;
-    scene.add(this.dock);
+    this.scene.add(this.dock);
 
     this.applyTheme();
     this.bindEvents();
     new ResizeObserver(() => this.resize()).observe(container);
   }
 
-  // ---------- models ----------
+  /* ---------- models ---------- */
 
-  makeRobot() {
+  private makeRobot(): THREE.Group {
     const g = new THREE.Group();
     const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
     const body = new THREE.Mesh(new THREE.CylinderGeometry(ROBOT_R, ROBOT_R, ROBOT_H, 48), white);
@@ -143,19 +196,15 @@ class Map3D {
     const lidar = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.9, 32), white);
     lidar.position.set(-0.6, ROBOT_H + 0.65, 0);
     lidar.castShadow = true;
-    this.accentMat = new THREE.MeshStandardMaterial({ color: 0x4c7df0, roughness: 0.4, emissive: 0x4c7df0, emissiveIntensity: 0.25 });
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 3.4), this.accentMat);
     nose.position.set(ROBOT_R - 0.75, ROBOT_H + 0.25, 0);
     g.add(body, ring, lidar, nose);
     return g;
   }
 
-  makeDock() {
+  private makeDock(): THREE.Group {
     const g = new THREE.Group();
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(6.5, 7, 4.5),
-      new THREE.MeshStandardMaterial({ color: 0xf7f8fa, roughness: 0.5 }),
-    );
+    const base = new THREE.Mesh(new THREE.BoxGeometry(6.5, 7, 4.5), new THREE.MeshStandardMaterial({ color: 0xf7f8fa, roughness: 0.5 }));
     base.position.y = 3.5;
     base.castShadow = true;
     const light = new THREE.Mesh(
@@ -167,10 +216,10 @@ class Map3D {
     return g;
   }
 
-  // ---------- data ----------
+  /* ---------- data ---------- */
 
-  // Called whenever the app has a new map. Cheap when only the robot moved.
-  setMap(m, mask, maskKey) {
+  /** Called whenever the app has a new map. Cheap when only the robot moved. */
+  setMap(m: MapPayload, mask: Mask, maskKey: string): void {
     const sizeChanged = mask.w !== this.W || mask.h !== this.H;
     this.W = mask.w;
     this.H = mask.h;
@@ -192,7 +241,7 @@ class Map3D {
     this.requestRender();
   }
 
-  setFloorImage(src) {
+  private setFloorImage(src: string): void {
     if (this.floorSrc === src) return;
     this.floorSrc = src;
     const img = new Image();
@@ -205,9 +254,9 @@ class Map3D {
     img.src = src;
   }
 
-  setSelectionCanvas(canvas) {
+  setSelectionCanvas(canvas: HTMLCanvasElement): void {
     if (!this.selTex || this.selTex.image !== canvas) {
-      if (this.selTex) this.selTex.dispose();
+      this.selTex?.dispose();
       this.selTex = new THREE.CanvasTexture(canvas);
       this.selTex.colorSpace = THREE.SRGBColorSpace;
       this.selTex.magFilter = THREE.NearestFilter;
@@ -218,21 +267,19 @@ class Map3D {
     this.requestRender();
   }
 
-  buildWalls(mask) {
+  private buildWalls(mask: Mask): void {
     const { w, h, data } = mask;
-    for (const key of ["walls", "furniture"]) {
-      if (this[key]) {
-        this.scene.remove(this[key]);
-        this[key].geometry.dispose();
-        this[key] = null;
-      }
+    for (const mesh of [this.walls, this.furniture]) {
+      if (!mesh) continue;
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
     }
-    const kind = (k) => (i) => data[i * 4 + 3] && !data[i * 4] && data[i * 4 + 1] === k;
+    const kind = (k: number) => (i: number) => !!data[i * 4 + 3] && !data[i * 4] && data[i * 4 + 1] === k;
     this.walls = this.instanced(rectangles(w, h, kind(1)), WALL_H, this.wallMat);
     this.furniture = this.instanced(rectangles(w, h, kind(2)), FURNITURE_H, this.furnitureMat);
   }
 
-  instanced(rects, height, material) {
+  private instanced(rects: [number, number, number, number][], height: number, material: THREE.Material): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, Math.max(rects.length, 1));
     mesh.count = rects.length;
     const m = new THREE.Matrix4();
@@ -250,16 +297,22 @@ class Map3D {
     return mesh;
   }
 
-  // Walls and zones as tinted glass: [{type, pts: [[px, py], ...]}] in base-image px.
-  setRestrictions(items) {
+  /** Walls and zones as tinted glass, with corners in base-image px. */
+  setRestrictions(items: { type: RestrictionType; pts: Pt[] }[]): void {
     for (const child of [...this.restrictions.children]) {
       this.restrictions.remove(child);
-      child.geometry.dispose();
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) child.geometry.dispose();
     }
-    const colour = { wall: 0xe5484d, no_go: 0xe5484d, no_mop: 0x8b5cf6 };
+    const colour: Record<RestrictionType, number> = { wall: 0xe5484d, no_go: 0xe5484d, no_mop: 0x8b5cf6 };
     for (const it of items) {
-      const pts = it.pts.map(([x, y]) => [x / this.scale - this.W / 2, y / this.scale - this.H / 2]);
-      const mat = new THREE.MeshBasicMaterial({ color: colour[it.type], transparent: true, opacity: it.type === "wall" ? 0.55 : 0.22, depthWrite: false, side: THREE.DoubleSide });
+      const pts = it.pts.map(([x, y]): Pt => [x / this.scale - this.W / 2, y / this.scale - this.H / 2]);
+      const mat = new THREE.MeshBasicMaterial({
+        color: colour[it.type],
+        transparent: true,
+        opacity: it.type === "wall" ? 0.55 : 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
       if (it.type === "wall") {
         const [[x0, z0], [x1, z1]] = pts;
         const len = Math.hypot(x1 - x0, z1 - z0);
@@ -282,15 +335,18 @@ class Map3D {
     this.requestRender();
   }
 
-  setRobot(robot, charger, jump) {
+  private setRobot(robot: MapPayload["robot"], charger: MapPayload["charger"], jump: boolean): void {
     if (charger) {
       this.dock.visible = true;
       this.dock.position.set(charger.x / this.scale - this.W / 2, 0, charger.y / this.scale - this.H / 2);
     } else {
       this.dock.visible = false;
     }
-    if (!robot) { this.robot.visible = false; return; }
-    const to = { x: robot.x / this.scale - this.W / 2, z: robot.y / this.scale - this.H / 2, a: ((robot.a || 0) * Math.PI) / 180 };
+    if (!robot) {
+      this.robot.visible = false;
+      return;
+    }
+    const to: RobotPose = { x: robot.x / this.scale - this.W / 2, z: robot.y / this.scale - this.H / 2, a: ((robot.a || 0) * Math.PI) / 180 };
     if (!this.robot.visible || jump) {
       this.robot.visible = true;
       this.robot.position.set(to.x, 0, to.z);
@@ -298,25 +354,25 @@ class Map3D {
       this.robotAnim = null;
       return;
     }
-    const from = { x: this.robot.position.x, z: this.robot.position.z, a: this.robot.rotation.y };
+    const from: RobotPose = { x: this.robot.position.x, z: this.robot.position.z, a: this.robot.rotation.y };
     if (Math.hypot(to.x - from.x, to.z - from.z) < 0.01 && Math.abs(to.a - from.a) < 0.01) return;
-    // Glide between map updates instead of jumping.
+    // Glide between map updates instead of jumping, turning the short way round.
     let da = (to.a - from.a) % (Math.PI * 2);
     if (da > Math.PI) da -= Math.PI * 2;
     if (da < -Math.PI) da += Math.PI * 2;
     this.robotAnim = { from, to: { ...to, a: from.a + da }, start: performance.now(), ms: 1200 };
   }
 
-  // Room labels float just above the floor: [{id, name, x, y, sel}] in base px.
-  setLabels(rooms) {
+  /** Room labels float just above the floor. */
+  setLabels(rooms: Label3D[]): void {
     this.labels = rooms.map((r) => ({ ...r, pos: new THREE.Vector3(r.x / this.scale - this.W / 2, 1, r.y / this.scale - this.H / 2) }));
     this.labelsEl.innerHTML = rooms
-      .map((r) => `<button class="room-label ${r.sel ? "sel" : ""}" data-room="${r.id}"><svg class="i tick"><use href="#i-check"/></svg>${r.name.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]))}</button>`)
+      .map((r) => `<button class="room-label ${r.sel ? "sel" : ""}" data-room="${r.id}"><svg class="i tick"><use href="#i-check"/></svg>${esc(r.name)}</button>`)
       .join("");
     this.requestRender();
   }
 
-  applyTheme() {
+  applyTheme(): void {
     this.wallMat.color.set(css("--map3d-wall", "#f4f6fa"));
     this.furnitureMat.color.set(css("--map3d-furniture", "#e1e5ec"));
     this.floorMat.color.set(css("--map3d-floor", "#ffffff"));
@@ -326,9 +382,9 @@ class Map3D {
     this.requestRender();
   }
 
-  // ---------- camera ----------
+  /* ---------- camera ---------- */
 
-  placeSun() {
+  private placeSun(): void {
     const s = Math.max(this.W, this.H);
     this.sun.position.set(-s * 0.35, s * 0.9, s * 0.55);
     this.sun.target.position.set(0, 0, 0);
@@ -342,30 +398,30 @@ class Map3D {
     cam.updateProjectionMatrix();
   }
 
-  fitDistance() {
+  private fitDistance(): number {
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     const aspect = this.camera.aspect || 1;
     const need = Math.max(this.H * 0.95, (this.W / aspect) * 1.05);
     return (need / 2 / Math.tan(fov / 2)) * 1.12;
   }
 
-  resetView(animate = true) {
+  resetView(animate = true): void {
     this.fitDist = this.fitDistance();
-    const target = { tx: 0, tz: this.H * 0.03, dist: this.fitDist, yaw: 0, pitch: 0.68 };
-    this.animateTo(target, animate);
+    this.animateTo({ tx: 0, tz: this.H * 0.03, dist: this.fitDist, yaw: 0, pitch: 0.68 }, animate);
   }
 
-  centerOnRobot() {
+  centerOnRobot(): boolean {
     if (!this.robot.visible) return false;
     this.animateTo({ ...this.view, tx: this.robot.position.x, tz: this.robot.position.z, dist: Math.min(this.view.dist, this.fitDist * 0.45) }, true);
     return true;
   }
 
-  zoomBy(f) {
+  zoomBy(f: number): void {
     this.animateTo({ ...this.view, dist: this.clampDist(this.view.dist / f) }, true);
   }
 
-  pan(dx, dy) {
+  /** Move the view by screen pixels (positive dx shows more to the right). */
+  pan(dx: number, dy: number): void {
     const k = this.unitsPerPixel();
     const { right, forward } = this.groundAxes();
     this.view.tx += (right.x * dx + forward.x * dy) * k;
@@ -374,7 +430,7 @@ class Map3D {
     this.requestRender();
   }
 
-  animateTo(target, animate) {
+  private animateTo(target: View, animate: boolean): void {
     if (!animate) {
       Object.assign(this.view, target);
       this.camAnim = null;
@@ -385,21 +441,21 @@ class Map3D {
     this.requestRender();
   }
 
-  clampDist(d) {
+  private clampDist(d: number): number {
     return THREE.MathUtils.clamp(d, this.fitDist * 0.12, this.fitDist * 2.5);
   }
 
-  clampTarget() {
+  private clampTarget(): void {
     this.view.tx = THREE.MathUtils.clamp(this.view.tx, -this.W * 0.6, this.W * 0.6);
     this.view.tz = THREE.MathUtils.clamp(this.view.tz, -this.H * 0.6, this.H * 0.6);
   }
 
-  unitsPerPixel() {
+  private unitsPerPixel(): number {
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     return (2 * this.view.dist * Math.tan(fov / 2)) / (this.container.clientHeight || 1);
   }
 
-  groundAxes() {
+  private groundAxes(): { right: THREE.Vector3; forward: THREE.Vector3 } {
     const { yaw } = this.view;
     return {
       right: new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)),
@@ -407,14 +463,13 @@ class Map3D {
     };
   }
 
-  updateCamera() {
+  private updateCamera(): void {
     const { tx, tz, dist, yaw, pitch } = this.view;
-    const c = this.camera;
-    c.position.set(tx + dist * Math.sin(pitch) * Math.sin(yaw), dist * Math.cos(pitch), tz + dist * Math.sin(pitch) * Math.cos(yaw));
-    c.lookAt(tx, 0, tz);
+    this.camera.position.set(tx + dist * Math.sin(pitch) * Math.sin(yaw), dist * Math.cos(pitch), tz + dist * Math.sin(pitch) * Math.cos(yaw));
+    this.camera.lookAt(tx, 0, tz);
   }
 
-  groundAt(clientX, clientY) {
+  private groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
     const r = this.renderer.domElement.getBoundingClientRect();
     const p = new THREE.Vector3(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1, 0.5);
     p.unproject(this.camera);
@@ -424,16 +479,16 @@ class Map3D {
     return this.camera.position.clone().add(dir.multiplyScalar(t));
   }
 
-  // Base-image pixel under the pointer (what the 2D map's room lookup expects).
-  pixelAt(clientX, clientY) {
+  /** Base-image pixel under the pointer (what the 2D map's room lookup expects). */
+  private pixelAt(clientX: number, clientY: number): Point | null {
     const g = this.groundAt(clientX, clientY);
     if (!g) return null;
     return { x: (g.x + this.W / 2) * this.scale, y: (g.z + this.H / 2) * this.scale };
   }
 
-  // ---------- rendering ----------
+  /* ---------- rendering ---------- */
 
-  setActive(on) {
+  setActive(on: boolean): void {
     this.active = on;
     if (on) {
       this.resize();
@@ -441,7 +496,7 @@ class Map3D {
     }
   }
 
-  resize() {
+  private resize(): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     if (!w || !h) return;
@@ -457,25 +512,25 @@ class Map3D {
     this.requestRender();
   }
 
-  requestRender() {
+  private requestRender(): void {
     if (!this.active || this.raf) return;
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
 
-  frame(now) {
+  private frame(now: number): void {
     this.raf = 0;
     let moving = false;
-    const ease = (k) => 1 - Math.pow(1 - k, 3);
+    const ease = (k: number) => 1 - Math.pow(1 - k, 3);
     if (this.camAnim) {
-      const k = Math.min(1, (now - this.camAnim.start) / this.camAnim.ms);
-      const { from, to } = this.camAnim;
-      for (const key of Object.keys(to)) this.view[key] = from[key] + (to[key] - from[key]) * ease(k);
+      const { from, to, start, ms } = this.camAnim;
+      const k = Math.min(1, (now - start) / ms);
+      for (const key of Object.keys(to) as (keyof View)[]) this.view[key] = from[key] + (to[key] - from[key]) * ease(k);
       if (k < 1) moving = true;
       else this.camAnim = null;
     }
     if (this.robotAnim) {
-      const k = Math.min(1, (now - this.robotAnim.start) / this.robotAnim.ms);
-      const { from, to } = this.robotAnim;
+      const { from, to, start, ms } = this.robotAnim;
+      const k = Math.min(1, (now - start) / ms);
       this.robot.position.set(from.x + (to.x - from.x) * k, 0, from.z + (to.z - from.z) * k);
       this.robot.rotation.y = from.a + (to.a - from.a) * ease(k);
       if (k < 1) moving = true;
@@ -487,14 +542,13 @@ class Map3D {
     if (moving) this.requestRender();
   }
 
-  placeLabels() {
-    if (!this.labels) return;
+  private placeLabels(): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     const els = this.labelsEl.children;
     const v = new THREE.Vector3();
     this.labels.forEach((l, i) => {
-      const el = els[i];
+      const el = els[i] as HTMLElement | undefined;
       if (!el) return;
       v.copy(l.pos).project(this.camera);
       const off = v.z > 1 || v.x < -1.2 || v.x > 1.2 || v.y < -1.2 || v.y > 1.2;
@@ -504,40 +558,54 @@ class Map3D {
     });
   }
 
-  // ---------- input ----------
+  /* ---------- input ---------- */
 
-  bindEvents() {
+  private bindEvents(): void {
     const el = this.container;
-    const pointers = new Map();
-    let drag = null;
+    const pointers = new Map<number, Point>();
+    let drag: Drag | null = null;
 
-    el.addEventListener("wheel", (e) => {
-      if (!this.active) return;
-      e.preventDefault();
-      this.camAnim = null;
-      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
-      const dx = e.deltaX * unit;
-      const dy = e.deltaY * unit;
-      const mouseWheel = e.deltaMode !== 0 || (e.deltaX === 0 && e.wheelDeltaY && e.wheelDeltaY % 120 === 0 && Math.abs(e.deltaY) >= 50);
-      if (e.ctrlKey || mouseWheel) this.zoomAt(e.clientX, e.clientY, Math.exp(dy * (e.ctrlKey ? 0.01 : 0.0025)));
-      else this.pan(dx, dy);
-    }, { passive: false });
+    el.addEventListener(
+      "wheel",
+      (e) => {
+        if (!this.active) return;
+        e.preventDefault();
+        this.camAnim = null;
+        const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+        const dx = e.deltaX * unit;
+        const dy = e.deltaY * unit;
+        const notches = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+        const mouseWheel = e.deltaMode !== 0 || (e.deltaX === 0 && !!notches && notches % 120 === 0 && Math.abs(e.deltaY) >= 50);
+        if (e.ctrlKey || mouseWheel) this.zoomAt(e.clientX, e.clientY, Math.exp(dy * (e.ctrlKey ? 0.01 : 0.0025)));
+        else this.pan(dx, dy);
+      },
+      { passive: false },
+    );
 
     // Safari sends trackpad pinch as gesture events.
     let gestureBase = 1;
-    el.addEventListener("gesturestart", (e) => { if (!this.active) return; e.preventDefault(); gestureBase = this.view.dist; });
+    el.addEventListener("gesturestart", (e) => {
+      if (!this.active) return;
+      e.preventDefault();
+      gestureBase = this.view.dist;
+    });
     el.addEventListener("gesturechange", (e) => {
       if (!this.active) return;
       e.preventDefault();
-      const d = this.clampDist(gestureBase / e.scale);
-      this.zoomAt(e.clientX, e.clientY, d / this.view.dist);
+      const g = e as SafariGesture;
+      const d = this.clampDist(gestureBase / g.scale);
+      this.zoomAt(g.clientX, g.clientY, d / this.view.dist);
     });
 
     el.addEventListener("pointerdown", (e) => {
-      if (!this.active || e.target.closest(".room-label")) return;
+      if (!this.active || (e.target instanceof Element && e.target.closest(".room-label"))) return;
       this.camAnim = null;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      try { el.setPointerCapture(e.pointerId); } catch { /* gone */ }
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        // pointer already gone
+      }
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         drag = { type: "pinch", d: Math.hypot(a.x - b.x, a.y - b.y), m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, angle: Math.atan2(b.y - a.y, b.x - a.x), moved: true };
@@ -555,12 +623,16 @@ class Map3D {
         if (e.pointerType === "mouse") {
           const px = this.pixelAt(e.clientX, e.clientY);
           const id = px ? this.hooks.roomAt(px) : 0;
-          if (id !== this.hover) { this.hover = id; this.hooks.onHover(id); }
+          if (id !== this.hover) {
+            this.hover = id;
+            this.hooks.onHover(id);
+          }
           el.classList.toggle("over-room", !!id);
         }
         return;
       }
-      if (drag.type === "pinch" && pointers.size >= 2) {
+      if (drag.type === "pinch") {
+        if (pointers.size < 2) return;
         const [a, b] = [...pointers.values()];
         const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         const d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -588,7 +660,7 @@ class Map3D {
       }
     });
 
-    const end = (e) => {
+    const end = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       if (!drag) return;
       if (drag.type !== "pinch" && !drag.moved && e.type === "pointerup") {
@@ -607,17 +679,22 @@ class Map3D {
     el.addEventListener("pointerup", end);
     el.addEventListener("pointercancel", end);
     el.addEventListener("pointerleave", () => {
-      if (!drag && this.hover) { this.hover = 0; this.hooks.onHover(0); }
+      if (!drag && this.hover) {
+        this.hover = 0;
+        this.hooks.onHover(0);
+      }
     });
-    el.addEventListener("contextmenu", (e) => this.active && e.preventDefault());
+    el.addEventListener("contextmenu", (e) => {
+      if (this.active) e.preventDefault();
+    });
     this.labelsEl.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-room]");
+      const b = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-room]") : null;
       if (b) this.hooks.onRoomClick(Number(b.dataset.room));
     });
   }
 
-  // Zoom by a factor (<1 = closer), keeping the floor point under the pointer in place.
-  zoomAt(clientX, clientY, factor) {
+  /** Zoom by a factor (<1 = closer), keeping the floor point under the pointer in place. */
+  private zoomAt(clientX: number, clientY: number, factor: number): void {
     const before = this.groundAt(clientX, clientY);
     this.view.dist = this.clampDist(this.view.dist * factor);
     this.updateCamera();

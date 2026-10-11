@@ -1,0 +1,21 @@
+{
+  "name": "roborock-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local web app for controlling a Roborock vacuum (UI sources)",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild web/main.ts --bundle --splitting --format=esm --outdir=static/dist --target=es2020 --minify --sourcemap",
+    "dev": "npm run build -- --watch",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  }
+}

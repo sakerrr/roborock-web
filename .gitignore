@@ -9,3 +9,7 @@ __pycache__/
 # Atomic-write leftovers and OS files
 *.tmp
 .DS_Store
+
+# Node toolchain and the built UI (npm run build)
+node_modules/
+static/dist/

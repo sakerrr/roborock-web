@@ -24,7 +24,7 @@ macOS: double-click **`start.command`**. Or, from a terminal:
 ./start.command --demo     # a simulated Qrevo S, no account needed
 ```
 
-The first run sets up a Python environment (it needs Python 3.11+ or [uv](https://docs.astral.sh/uv/)). After that, the app opens at http://localhost:8765.
+The first run sets up a Python environment (Python 3.11+ or [uv](https://docs.astral.sh/uv/)) and builds the interface (Node.js 18+). After that, the app opens at http://localhost:8765.
 
 Sign in with the email you use in the **Roborock app**. You'll get a one-time code by email, just like the app sends. Mi Home / Xiaomi Home accounts are not supported.
 
@@ -54,7 +54,7 @@ While you're drawing a cleaning zone or editing walls, dragging draws instead of
 Switch views with **2D / 3D / Plan** above the map. The app remembers your choice.
 
 - **2D**: the colour map, with the robot's path.
-- **3D**: your home with raised walls and furniture, the robot and dock as little models, and invisible walls and zones as tinted glass. **Drag to turn** it, swipe with two fingers to move, pinch to zoom, and click rooms to pick them. Zones, go-to and editing switch back to 2D. The 3D library ([three.js](https://threejs.org), MIT) is bundled in `static/vendor/` and only loads the first time you open 3D.
+- **3D**: your home with raised walls and furniture, the robot and dock as little models, and invisible walls and zones as tinted glass. **Drag to turn** it, swipe with two fingers to move, pinch to zoom, and click rooms to pick them. Zones, go-to and editing switch back to 2D. The 3D library ([three.js](https://threejs.org), MIT) is bundled into a separate file that only loads the first time you open 3D.
 - **Plan**: an architect-style drawing with walls, carpets and a 1 m grid. Each room shows its floor area, and the footer adds up the area of the whole home or of the rooms you picked.
 
 ## Editing the map
@@ -93,12 +93,26 @@ If a map has no-carpet zones made in the Roborock app, the editor warns you: the
 - Settings your model doesn't support are simply hidden.
 - Roborock limits login attempts (a few per minute, ~10 per hour). If code requests fail, wait a bit.
 
+## Development
+
+The backend is Python (FastAPI + python-roborock). The interface is TypeScript in `web/`, which esbuild bundles into `static/dist/`.
+
+```bash
+npm install
+npm run dev        # rebuild on every change, then just reload the page
+npm run typecheck  # strict type check
+npm run build      # one-off build (start.command does this for you)
+```
+
+Python changes need a server restart. If the app notices code changed since it started, or the interface wasn't rebuilt, it shows a "restart to finish updating" banner.
+
 ## Files
 
 | | |
 |---|---|
 | `server.py` | Web server and API |
 | `robot.py` | Login session and robot control (python-roborock) |
-| `maprender.py` | Turns the robot's raw map into a soft PNG, a room hit-mask, and walls/zones for the editor |
+| `maprender.py` | Turns the robot's raw map into a soft PNG, a room mask, and walls/zones for the editor |
 | `demo.py` | The simulated robot behind `--demo` |
-| `static/` | The UI (plain HTML/CSS/JS, no build step) |
+| `web/` | The interface in TypeScript: `main.ts` (start-up), `panels.ts` (sidebar), `session.ts` (sign-in, polling), `settings.ts`, `map/` (map, pan & zoom, editor, views), `map3d.ts` (3D) |
+| `static/` | `index.html`, `styles.css`, and the built bundle in `dist/` |

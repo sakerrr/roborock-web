@@ -17,12 +17,13 @@ from typing import Any
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from roborock.exceptions import RoborockException
 
 ROOT = Path(__file__).parent
 STATIC = ROOT / "static"
+BUNDLE = STATIC / "dist" / "main.js"  # built from web/*.ts by `npm run build`
 
 
 def code_fingerprint() -> str:
@@ -31,6 +32,14 @@ def code_fingerprint() -> str:
     for f in sorted(ROOT.glob("*.py")):
         h.update(f.read_bytes())
     return h.hexdigest()
+
+
+def ui_outdated() -> bool:
+    """True when the TypeScript sources changed after the last build."""
+    if not BUNDLE.exists():
+        return True
+    newest = max((f.stat().st_mtime for f in (ROOT / "web").rglob("*.ts")), default=0.0)
+    return newest > BUNDLE.stat().st_mtime
 
 
 def create_app(demo: bool) -> FastAPI:
@@ -76,8 +85,10 @@ def create_app(demo: bool) -> FastAPI:
 
     @app.get("/api/auth")
     async def auth():
-        # The UI files are always served fresh, but Python changes need a restart.
-        return {**service.auth_state(), "restart_needed": code_fingerprint() != started_with}
+        # The UI files are always served fresh, but Python changes need a restart
+        # and TypeScript changes need a rebuild (start.command does both).
+        outdated = code_fingerprint() != started_with or ui_outdated()
+        return {**service.auth_state(), "restart_needed": outdated}
 
     @app.post("/api/auth/code")
     async def request_code(email: str = Body(..., embed=True)):
@@ -119,6 +130,12 @@ def create_app(demo: bool) -> FastAPI:
 
     @app.get("/")
     async def index():
+        if not BUNDLE.exists():
+            return HTMLResponse(
+                "<p style='font:16px system-ui;margin:40px'>The interface isn't built yet. Start the app with "
+                "<code>start.command</code>, or run <code>npm install</code> and <code>npm run build</code>.</p>",
+                status_code=503,
+            )
         return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

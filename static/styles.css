@@ -35,6 +35,10 @@
   --plan-grid: rgba(43, 51, 64, 0.07);
   --plan-edge: rgba(43, 51, 64, 0.22);
   --plan-ink: #2b3340;
+  --map3d-wall: #f6f7fa;
+  --map3d-furniture: #e1e5ec;
+  --map3d-floor: #ffffff;
+  --map3d-ground: #d9e1ee;
   color-scheme: light;
 }
 
@@ -74,6 +78,10 @@
     --plan-grid: rgba(211, 219, 232, 0.06);
     --plan-edge: rgba(211, 219, 232, 0.2);
     --plan-ink: #e6ebf3;
+    --map3d-wall: #3d4a5f;
+    --map3d-furniture: #2c3649;
+    --map3d-floor: #a3abbb;
+    --map3d-ground: #1a2232;
     color-scheme: dark;
   }
 }
@@ -444,3 +452,13 @@ input[type="time"], .field { width: 100%; margin-top: 4px; border: 1px solid var
 .map-inner.plan .room-label .tick { display: none; }
 .map-inner.plan .room-label.sel { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18); }
 .map-inner.plan .room-label.sel .area { opacity: 0.85; }
+
+/* 3D view */
+.map3d { position: absolute; inset: 0; z-index: 3; border-radius: inherit; overflow: hidden; cursor: grab; touch-action: none; }
+.map3d.dragging { cursor: grabbing; }
+.map3d.over-room { cursor: pointer; }
+.map3d-canvas { display: block; width: 100%; height: 100%; }
+.map3d-labels { position: absolute; inset: 0; pointer-events: none; }
+.map3d-labels .room-label { pointer-events: auto; cursor: pointer; }
+.map-stage.is-3d .map-inner { visibility: hidden; }
+.map-stage.is-3d .map-zoom { z-index: 6; }

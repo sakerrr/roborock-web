@@ -560,6 +560,7 @@ async function setMap(m) {
   renderMapSelect();
   refreshMapOverlays();
   renderMarkers();
+  sync3D(true);
   if (S.status) renderStatus();
 }
 
@@ -595,6 +596,7 @@ function refreshMapOverlays() {
   drawSelection();
   renderDraw();
   renderMapFoot();
+  sync3D();
   if (S.status) renderActions();
 }
 
@@ -648,6 +650,7 @@ function drawSelection() {
     else if (any) { out[i] = dim[0]; out[i + 1] = dim[1]; out[i + 2] = dim[2]; out[i + 3] = dimA; }
   }
   ctx.putImageData(img, 0, 0);
+  if (map3d && S.viewMode === "3d") map3d.setSelectionCanvas(selCanvas);
 }
 
 function renderDraw() {
@@ -676,7 +679,9 @@ function renderMapFoot() {
   if (S.tool === "rooms") {
     html = S.selected.length
       ? `<span class="hint"><b style="color:var(--text)">${S.selected.map((id) => esc(names.get(id))).join(", ")}</b>${plan ? ` · ${areaOf(S.selected)}` : ""}</span><button class="link" data-act="clear-sel">Clear</button>`
-      : plan
+      : S.viewMode === "3d"
+        ? `<span class="hint">Drag to turn, swipe with two fingers to move, pinch to zoom. Click rooms to clean just those.</span>`
+        : plan
         ? `<span class="hint">Floor area ${areaOf(S.map.rooms.map((r) => r.id))} across ${S.map.rooms.length} rooms. Click rooms to clean just those.</span>`
         : `<span class="hint">Tap rooms to clean just those, or clean everywhere.</span>`;
   } else if (S.tool === "zone") {
@@ -733,6 +738,7 @@ function toggleRoom(id) {
 }
 
 function setTool(tool) {
+  if (S.viewMode === "3d" && tool !== "rooms") { toast("Switch to 2D to draw zones or send the robot to a spot"); return; }
   S.tool = tool;
   S.hover = 0;
   $$("#map-tools button").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
@@ -744,16 +750,64 @@ function setTool(tool) {
 /* ---- view modes ---- */
 function setViewMode(mode) {
   if (mode === S.viewMode) return;
+  if (mode === "3d" && S.tool !== "rooms") setTool("rooms"); // zones and go-to need the flat map
   S.viewMode = mode;
   try { localStorage.setItem("view", mode); } catch { /* storage blocked */ }
   syncViewChrome();
   if (S.map) $("#map-img").src = mode === "plan" ? planImage() : S.map.base;
   refreshMapOverlays();
+  if (mode === "3d") show3D();
 }
 
 function syncViewChrome() {
+  const is3d = S.viewMode === "3d";
   $$("#view-modes button").forEach((b) => b.classList.toggle("active", b.dataset.view === S.viewMode));
   inner.classList.toggle("plan", S.viewMode === "plan");
+  stage.classList.toggle("is-3d", is3d);
+  $("#map3d").hidden = !is3d;
+  if (map3d) map3d.setActive(is3d);
+  if (S.map) applyView();
+  for (const b of $$('#map-tools [data-tool="zone"], #map-tools [data-tool="goto"]')) {
+    b.disabled = is3d;
+    b.title = is3d ? "Switch to 2D to use this" : b.dataset.tool === "zone" ? "Draw a zone" : "Send robot to a spot";
+  }
+}
+
+/* ---- 3D view (three.js, loaded the first time you open it) ---- */
+let map3d = null;
+let map3dLoading = null;
+
+async function show3D() {
+  try {
+    if (!map3dLoading) {
+      map3dLoading = import("/static/map3d.js").then(({ createMap3D }) => {
+        map3d = createMap3D($("#map3d"), {
+          roomAt: (p) => roomAt(p),
+          onRoomClick: (id) => toggleRoom(id),
+          onHover: (id) => { S.hover = id; drawSelection(); },
+        });
+      });
+    }
+    await map3dLoading;
+  } catch (e) {
+    map3dLoading = null;
+    toast("3D isn't available in this browser", true);
+    setViewMode("2d");
+    return;
+  }
+  if (S.viewMode !== "3d") return;
+  map3d.setActive(true);
+  sync3D(true);
+}
+
+// Keep the 3D scene in step with the app: the map itself when it changes,
+// and the labels, selection and walls/zones whenever the overlays redraw.
+function sync3D(mapChanged = false) {
+  if (!map3d || S.viewMode !== "3d" || !S.map || !S.mask) return;
+  if (mapChanged) map3d.setMap(S.map, S.mask, S.map.mask);
+  map3d.setLabels(S.map.rooms.map((r) => ({ id: r.id, name: r.name, x: r.x, y: r.y, sel: S.selected.includes(r.id) })));
+  map3d.setRestrictions(S.map.frame ? (S.map.restrictions || []).map((r) => ({ type: r.type, pts: itemPx(r) })) : []);
+  map3d.setSelectionCanvas(selCanvas);
 }
 
 // The floor plan is drawn here from the room mask: walls, floors, carpet hatching
@@ -863,6 +917,7 @@ function blend(base, over) {
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (S.map && S.viewMode === "plan") $("#map-img").src = planImage();
   if (S.mask) drawSelection();
+  if (map3d) map3d.applyTheme();
 });
 
 /* ---- pan & zoom, Google Maps style ----
@@ -893,9 +948,11 @@ function applyView() {
   $("#map-img").style.imageRendering = k * s >= 2 ? "pixelated" : "";
   // On touch screens one finger scrolls the page until you zoom; pinch always zooms the map.
   stage.style.touchAction = S.tool === "zone" || S.edit || s !== 1 ? "none" : "pan-y";
-  $("#zoom-in").disabled = s >= MAX_ZOOM;
-  $("#zoom-out").disabled = s <= MIN_ZOOM;
-  $("#zoom-fit").disabled = isFit();
+  // In 3D the camera has its own limits, so the buttons stay available.
+  const is3d = S.viewMode === "3d";
+  $("#zoom-in").disabled = !is3d && s >= MAX_ZOOM;
+  $("#zoom-out").disabled = !is3d && s <= MIN_ZOOM;
+  $("#zoom-fit").disabled = !is3d && isFit();
   renderDraw();
   renderShapes();
 }
@@ -1017,7 +1074,7 @@ function wheelIsMouse(e) {
 }
 
 stage.addEventListener("wheel", (e) => {
-  if (!S.map || inner.hidden) return;
+  if (!S.map || inner.hidden || S.viewMode === "3d") return;
   e.preventDefault();
   stopInertia();
   const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? stage.clientHeight : 1;
@@ -1052,7 +1109,7 @@ stage.addEventListener("gesturechange", (e) => {
 stage.addEventListener("gestureend", (e) => { if (S.map && !pointers.size) e.preventDefault(); });
 
 stage.addEventListener("pointerdown", (e) => {
-  if (!S.map || inner.hidden || e.target.closest(".map-zoom, .edit-tools, .shape-delete")) return;
+  if (!S.map || inner.hidden || S.viewMode === "3d" || e.target.closest(".map-zoom, .edit-tools, .shape-delete")) return;
   stopInertia();
   S.suppressClick = false;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1094,7 +1151,7 @@ stage.addEventListener("pointerdown", (e) => {
 
 stage.addEventListener("pointermove", (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (!S.map) return;
+  if (!S.map || S.viewMode === "3d") return;
   if (!gesture) {
     const pickRooms = S.edit ? S.edit.mode === "rooms" && S.edit.tool !== "split" : S.tool === "rooms";
     if (pickRooms && e.pointerType === "mouse") {
@@ -1189,6 +1246,15 @@ window.addEventListener("resize", fitMap);
 $("#map-zoom").addEventListener("click", (e) => {
   const b = e.target.closest("[data-zoom]");
   if (!b) return;
+  if (S.viewMode === "3d" && map3d) {
+    ({
+      in: () => map3d.zoomBy(1.6),
+      out: () => map3d.zoomBy(1 / 1.6),
+      fit: () => map3d.resetView(),
+      robot: () => map3d.centerOnRobot() || toast("The robot isn't on the map right now"),
+    })[b.dataset.zoom]();
+    return;
+  }
   ({ in: () => zoomBy(1.6), out: () => zoomBy(1 / 1.6), fit: () => resetView(), robot: centerOnRobot })[b.dataset.zoom]();
 });
 
@@ -1196,6 +1262,17 @@ document.addEventListener("keydown", (e) => {
   if (!S.map || S.tab !== "home" || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target.closest("input, select, textarea")) return;
   const step = 120;
+  if (S.viewMode === "3d" && map3d) {
+    const keys3d = {
+      "+": () => map3d.zoomBy(1.4), "=": () => map3d.zoomBy(1.4), "-": () => map3d.zoomBy(1 / 1.4), _: () => map3d.zoomBy(1 / 1.4),
+      0: () => map3d.resetView(), r: () => map3d.centerOnRobot(), R: () => map3d.centerOnRobot(),
+      ArrowLeft: () => map3d.pan(-step, 0), ArrowRight: () => map3d.pan(step, 0),
+      ArrowUp: () => map3d.pan(0, -step), ArrowDown: () => map3d.pan(0, step),
+    };
+    if (e.key === " " && overStage) { e.preventDefault(); map3d.spaceDown = true; return; }
+    if (keys3d[e.key]) { e.preventDefault(); keys3d[e.key](); }
+    return;
+  }
   const keys = {
     "+": () => zoomBy(1.4), "=": () => zoomBy(1.4), "-": () => zoomBy(1 / 1.4), _: () => zoomBy(1 / 1.4),
     0: () => resetView(), r: centerOnRobot, R: centerOnRobot,
@@ -1213,7 +1290,11 @@ document.addEventListener("keydown", (e) => {
   fn();
 });
 document.addEventListener("keyup", (e) => {
-  if (e.key === " ") { spaceDown = false; stage.classList.remove("space-pan"); }
+  if (e.key === " ") {
+    spaceDown = false;
+    stage.classList.remove("space-pan");
+    if (map3d) map3d.spaceDown = false;
+  }
 });
 
 /* ---------------- map editing ----------------
@@ -1271,6 +1352,7 @@ function syncInnerClasses() {
 
 function startEdit() {
   if (!S.map) { toast("The map is still loading. Try again in a moment."); return; }
+  if (S.viewMode === "3d") setViewMode("2d");
   if (!S.map.frame) { toast("Restart the app to turn on map editing", true); return; }
   const ph = S.status && S.status.phase;
   if (ph === "cleaning" || ph === "returning") { toast("Pause or dock the robot to edit the map"); return; }
@@ -1917,5 +1999,6 @@ $("#device-select").addEventListener("change", (e) => {
 
 /* ---------------- boot ---------------- */
 syncViewChrome();
+if (S.viewMode === "3d") show3D();
 $$("[data-icon]").forEach((el) => (el.innerHTML = icon(el.dataset.icon)));
 refreshAuth();

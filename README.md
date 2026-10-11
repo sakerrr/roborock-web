@@ -5,6 +5,7 @@ A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S
 - **Live map** with room names, the robot and the dock. It updates every few seconds while the robot cleans.
 - **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. You can choose 1–3 passes.
 - **Move and zoom** the map like Google Maps: two-finger swipe, pinch, drag.
+- **Three views**: the colour map, a **3D view** you can turn around, and a **floor plan** with room sizes.
 - **Edit the map**: invisible walls, no-go and no-mop zones, and merging, splitting or renaming rooms.
 - **Start / pause / resume / stop / dock / locate**.
 - **Cleaning mode**: Vacuum, Vac & Mop, Mop, Custom or SmartPlan. You can also set suction, water flow and mop route.
@@ -47,6 +48,14 @@ Sign in with the email you use in the **Roborock app**. You'll get a one-time co
 Zoom always heads toward your cursor or fingers, and a quick drag glides a little when you let go. The buttons in the corner zoom, **center on the robot** (or press **R**) and **fit the whole map** (or press **0**). The arrow keys and **+ / −** work too.
 
 While you're drawing a cleaning zone or editing walls, dragging draws instead of moving the map. A two-finger swipe still moves it, or hold **Space** and drag.
+
+## Map views
+
+Switch views with **2D / 3D / Plan** above the map. The app remembers your choice.
+
+- **2D**: the colour map, with the robot's path.
+- **3D**: your home with raised walls and furniture, the robot and dock as little models, and invisible walls and zones as tinted glass. **Drag to turn** it, swipe with two fingers to move, pinch to zoom, and click rooms to pick them. Zones, go-to and editing switch back to 2D. The 3D library ([three.js](https://threejs.org), MIT) is bundled in `static/vendor/` and only loads the first time you open 3D.
+- **Plan**: an architect-style drawing with walls, carpets and a 1 m grid. Each room shows its floor area, and the footer adds up the area of the whole home or of the rooms you picked.
 
 ## Editing the map
 

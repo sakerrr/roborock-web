@@ -56,6 +56,13 @@ let map3dLoading: Promise<void> | null = null;
 
 export const get3D = (): Map3D | null => map3d;
 
+/** Fetch the 3D code while the browser is idle, so switching to 3D doesn't wait for it. */
+export function preload3D(): void {
+  const load = () => void import("../map3d").catch(() => {});
+  if ("requestIdleCallback" in window) window.requestIdleCallback(load, { timeout: 10_000 });
+  else setTimeout(load, 3000);
+}
+
 export async function show3D(): Promise<void> {
   try {
     map3dLoading ??= import("../map3d").then(({ createMap3D }) => {

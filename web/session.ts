@@ -3,7 +3,9 @@
 import { api, devicePath } from "./api";
 import { $, busyBtn, errorMessage, esc, icon } from "./dom";
 import { mapEmpty, setMap } from "./map/core";
+import { preload3D } from "./map/views";
 import { renderSkeletons, setConn, setStatus } from "./panels";
+import { loadSettings } from "./settings";
 import { S } from "./state";
 import type { Auth, Device, MapResponse, Status } from "./types";
 
@@ -167,6 +169,19 @@ async function pollStatus(): Promise<void> {
   }
 }
 
+let warmed = false;
+
+// Once the map is up, get the rest ready in the background: the 3D code, and the
+// settings, so opening either is instant.
+function warmUp(): void {
+  if (warmed) return;
+  warmed = true;
+  preload3D();
+  setTimeout(() => {
+    if (!S.settings && S.tab !== "settings") void loadSettings();
+  }, 3000);
+}
+
 function mapInterval(): number {
   const ph = S.status?.phase;
   return ph === "cleaning" || ph === "returning" ? 3000 : 20000;
@@ -186,7 +201,9 @@ export async function pollMap(force = false): Promise<void> {
     const m = await api<MapResponse>(devicePath(`map${qs ? `?${qs}` : ""}`));
     if (!m.available) mapEmpty("No map yet. Run a full clean once so the robot can learn your home.");
     else if (!m.unchanged) {
+      const first = !S.map;
       await setMap(m);
+      if (first) warmUp();
       if (m.stale) setTimeout(() => void pollMap(true), 2500); // a saved map: the fresh one is on its way
     }
   } catch (e) {

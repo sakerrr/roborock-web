@@ -14,7 +14,13 @@ export function setConn(ok: boolean, text: string): void {
   $("#conn-text").textContent = text;
 }
 
+let lastStatus = "";
+
 export function setStatus(st: Status): void {
+  // Polled every few seconds; when nothing changed, leave the sidebar alone.
+  const key = JSON.stringify(st);
+  if (S.status && key === lastStatus) return;
+  lastStatus = key;
   const jobEnded = S.jobRooms && !st.job;
   const backOnline = S.status?.connected === false && st.connected !== false;
   const jobChanged = !!S.status && !!S.status.job !== !!st.job;

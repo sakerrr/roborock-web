@@ -225,8 +225,8 @@ function blend(base: RGBA, over: RGBA): RGBA {
   return [mix(0), mix(1), mix(2), 255];
 }
 
-// Follow the system theme in every view.
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+// Redraw what's drawn with theme colours when the theme changes (web/theme.ts).
+document.addEventListener("themechange", () => {
   if (S.map && (S.viewMode === "plan" || S.viewMode === "fresh")) mapImg.src = viewImage();
   if (S.mask) drawSelection();
   map3d?.applyTheme();

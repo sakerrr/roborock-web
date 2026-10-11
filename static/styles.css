@@ -57,63 +57,62 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0b0f17;
-    --bg-glow: #121a2b;
-    --card: #131a26;
-    --card-border: rgba(255, 255, 255, 0.05);
-    --surface: #1a2231;
-    --surface-2: #222c3d;
-    --text: #e8edf6;
-    --muted: #94a1b6;
-    --faint: #66738a;
-    --line: rgba(255, 255, 255, 0.07);
-    --accent: #6c95f7;
-    --accent-strong: #84a7fa;
-    --accent-soft: rgba(108, 149, 247, 0.16);
-    --accent-ink: #0b0f17;
-    --ok: #3cc58c;
-    --ok-soft: rgba(60, 197, 140, 0.14);
-    --warn: #f0b44f;
-    --warn-soft: rgba(240, 180, 79, 0.14);
-    --danger: #f06a6e;
-    --danger-soft: rgba(240, 106, 110, 0.14);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.25);
-    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.4);
-    --seg-active: #35425a;
-    --mask-dim: 26, 34, 49;
-    --mask-dim-a: 165;
-    --map-filter: brightness(0.82);
-    /* the same hue stepped for the dark surface: what's stale glows, what's fresh recedes */
-    --fresh-0: #3b2a20;
-    --fresh-1: #5e3b24;
-    --fresh-2: #8c5027;
-    --fresh-3: #c26b2c;
-    --fresh-4: #ea8b45;
-    --fresh-5: #ffb87a;
-    --fresh-none: #232b3a;
-    --fresh-none-hatch: rgba(160, 170, 190, 0.22);
-    --fresh-wall: #a3a9b3;
-    --fresh-furniture: #2c3444;
-    --plan-paper: #182032;
-    --plan-carpet: #1f2839;
-    --plan-hatch: rgba(225, 205, 160, 0.14);
-    --plan-wall: #d3dbe8;
-    --plan-furniture: #2c3649;
-    --plan-grid: rgba(211, 219, 232, 0.06);
-    --plan-edge: rgba(211, 219, 232, 0.2);
-    --plan-ink: #e6ebf3;
-    --map3d-wall: #3d4a5f;
-    --map3d-furniture: #2c3649;
-    --map3d-floor: #a3abbb;
-    --map3d-ground: #1a2232;
-    --map3d-rug: #75654d;
-    --carpet-tint: rgba(255, 240, 215, 0.14);
-    --carpet-hatch: rgba(250, 225, 185, 0.42);
-    --halo: rgba(11, 15, 23, 0.85);
-    color-scheme: dark;
-  }
+/* Dark theme: index.html and web/theme.ts set data-theme from the Mac or the user's choice. */
+:root[data-theme="dark"] {
+  --bg: #0b0f17;
+  --bg-glow: #121a2b;
+  --card: #131a26;
+  --card-border: rgba(255, 255, 255, 0.05);
+  --surface: #1a2231;
+  --surface-2: #222c3d;
+  --text: #e8edf6;
+  --muted: #94a1b6;
+  --faint: #66738a;
+  --line: rgba(255, 255, 255, 0.07);
+  --accent: #6c95f7;
+  --accent-strong: #84a7fa;
+  --accent-soft: rgba(108, 149, 247, 0.16);
+  --accent-ink: #0b0f17;
+  --ok: #3cc58c;
+  --ok-soft: rgba(60, 197, 140, 0.14);
+  --warn: #f0b44f;
+  --warn-soft: rgba(240, 180, 79, 0.14);
+  --danger: #f06a6e;
+  --danger-soft: rgba(240, 106, 110, 0.14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.25);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.4);
+  --seg-active: #35425a;
+  --mask-dim: 26, 34, 49;
+  --mask-dim-a: 165;
+  --map-filter: brightness(0.82);
+  /* the same hue stepped for the dark surface: what's stale glows, what's fresh recedes */
+  --fresh-0: #3b2a20;
+  --fresh-1: #5e3b24;
+  --fresh-2: #8c5027;
+  --fresh-3: #c26b2c;
+  --fresh-4: #ea8b45;
+  --fresh-5: #ffb87a;
+  --fresh-none: #232b3a;
+  --fresh-none-hatch: rgba(160, 170, 190, 0.22);
+  --fresh-wall: #a3a9b3;
+  --fresh-furniture: #2c3444;
+  --plan-paper: #182032;
+  --plan-carpet: #1f2839;
+  --plan-hatch: rgba(225, 205, 160, 0.14);
+  --plan-wall: #d3dbe8;
+  --plan-furniture: #2c3649;
+  --plan-grid: rgba(211, 219, 232, 0.06);
+  --plan-edge: rgba(211, 219, 232, 0.2);
+  --plan-ink: #e6ebf3;
+  --map3d-wall: #3d4a5f;
+  --map3d-furniture: #2c3649;
+  --map3d-floor: #a3abbb;
+  --map3d-ground: #1a2232;
+  --map3d-rug: #75654d;
+  --carpet-tint: rgba(255, 240, 215, 0.14);
+  --carpet-hatch: rgba(250, 225, 185, 0.42);
+  --halo: rgba(11, 15, 23, 0.85);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -592,3 +591,11 @@ svg.i.tiny { width: 12px; height: 12px; }
 .code-note { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(236, 131, 90, 0.14); color: var(--text); font-size: 13.5px; line-height: 1.45; }
 #have-code { display: block; margin: 12px auto 0; }
 #resend-code, #change-email { display: block; margin: 10px auto 0; }
+
+.top-right { display: flex; align-items: center; gap: 10px; }
+.theme-btn { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); transition: color .15s, background .15s; }
+.theme-btn:hover { color: var(--text); }
+.theme-btn svg { width: 19px; height: 19px; }
+.theme-choice { margin-top: 10px; }
+.theme-choice button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.theme-choice button svg { width: 14px; height: 14px; }

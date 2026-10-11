@@ -13,6 +13,7 @@ import { doAction, renderActions, renderSkeletons, setModeValue } from "./panels
 import { logout, reconnect, refreshAuth, startLoops } from "./session";
 import { loadSettings, setChoice } from "./settings";
 import { S, type EditTool, type ViewMode } from "./state";
+import "./theme";
 
 document.addEventListener("click", async (e) => {
   const t = closest<HTMLButtonElement>(e.target, "button");

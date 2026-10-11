@@ -7,6 +7,15 @@
   <meta name="theme-color" content="#0b0f17" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Roborock</title>
+  <script>
+    // Apply the saved theme before anything paints (web/theme.ts keeps it up to date).
+    (function () {
+      var p = null;
+      try { p = localStorage.getItem("theme"); } catch (e) {}
+      var dark = p === "dark" || (p !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%234c7df0'/%3E%3Ccircle cx='12' cy='9.5' r='2.4' fill='white'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -56,10 +65,13 @@
           <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">Connecting…</span></div>
         </div>
       </div>
+      <div class="top-right">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme"></button>
       <nav class="tabs">
         <button data-tab="home" class="active"><svg class="i"><use href="#i-map"/></svg><span>Home</span></button>
         <button data-tab="settings"><svg class="i"><use href="#i-sliders"/></svg><span>Settings</span></button>
       </nav>
+      </div>
     </header>
 
     <div id="center-msg" class="center-msg" hidden></div>
@@ -204,6 +216,7 @@
       <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
       <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></symbol>
       <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></symbol>
+      <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0z"/><path d="M12 17v5"/></symbol>
       <symbol id="i-paw" viewBox="0 0 24 24"><circle cx="11" cy="4.5" r="2"/><circle cx="18" cy="8.5" r="2"/><circle cx="19.5" cy="15.5" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.05Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10z"/></symbol>

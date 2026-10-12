@@ -1,9 +1,9 @@
 // The Settings tab.
 
 import { api, devicePath } from "./api";
-import { $, $opt, errorMessage, esc, fmtArea, fmtDuration, fmtWhen, human, icon } from "./dom";
+import { $, $opt, errorMessage, esc, fmtArea, fmtDuration, fmtWhen, human, icon, toast } from "./dom";
 import { OPT_LABEL } from "./labels";
-import { blockedNote, doAction } from "./panels";
+import { blockedNote, doAction, setSmartPlanShown, smartPlanShown } from "./panels";
 import { S } from "./state";
 import { notifyEnabled, notifySupported, setNotify } from "./notify";
 import { themeChoice } from "./theme";
@@ -118,7 +118,8 @@ export function renderSettings(): void {
       ${row("alert", "When it needs help", "A desktop notification when it gets stuck or the dock needs attention, while this page is open", sw("notify", notifyEnabled()))}</div>`);
   }
   cards.push(`<div class="card"><div class="card-head"><h3 class="card-title">${icon("sun")}Appearance</h3></div>
-    <div class="row stack"><div class="row-main"><span class="row-icon">${icon("contrast")}</span><div><div class="row-title">Theme</div><div class="row-sub">Auto follows your Mac's light or dark setting</div></div></div>${themeChoice()}</div></div>`);
+    <div class="row stack"><div class="row-main"><span class="row-icon">${icon("contrast")}</span><div><div class="row-title">Theme</div><div class="row-sub">Auto follows your Mac's light or dark setting</div></div></div>${themeChoice()}</div>
+    ${row("spark", "SmartPlan", "Offer SmartPlan in Cleaning mode", sw("smartplan", smartPlanShown()))}</div>`);
 
   // About
   const d = s.device ?? {};
@@ -201,6 +202,11 @@ document.addEventListener("change", async (e) => {
   }
   if (action === "notify") {
     t.checked = await setNotify(t.checked);
+    return;
+  }
+  if (action === "smartplan") {
+    setSmartPlanShown(t.checked);
+    toast(t.checked ? "SmartPlan is back in Cleaning mode" : "SmartPlan is hidden");
     return;
   }
   const on = t.checked;

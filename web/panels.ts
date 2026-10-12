@@ -299,6 +299,28 @@ export async function doAction(action: string, params: Record<string, unknown> =
 
 /* ---------------- cleaning mode ---------------- */
 
+// SmartPlan is left out of the modes unless it's turned back on in Settings (remembered in this browser).
+const SMARTPLAN_KEY = "show-smartplan";
+let smartPlan = (() => {
+  try {
+    return localStorage.getItem(SMARTPLAN_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+
+export const smartPlanShown = (): boolean => smartPlan;
+
+export function setSmartPlanShown(on: boolean): void {
+  smartPlan = on;
+  try {
+    localStorage.setItem(SMARTPLAN_KEY, on ? "1" : "0");
+  } catch {
+    // storage blocked: just for now
+  }
+  renderMode();
+}
+
 export function renderMode(): void {
   const m = S.status?.mode;
   if (!m) return;
@@ -307,6 +329,8 @@ export function renderMode(): void {
   const water = S.pending.water ?? m.water;
   const mop = S.pending.mop ?? m.mop;
   const hasModes = m.cleaning_options.length > 0;
+  // Still shown while the robot is in it (set from the phone, say), so the card never misstates the mode.
+  const modes = m.cleaning_options.filter((o) => o !== "smart_mode" || smartPlan || cur === o);
   const simple = !["smart_mode", "custom"].includes(cur ?? "");
   const showFan = simple && cur !== "mop";
   const showWater = hasModes && simple && cur !== "vacuum" && m.water_options.length > 0;
@@ -319,7 +343,7 @@ export function renderMode(): void {
 
   let html = `<div class="card-head"><h3 class="card-title">${icon("spark")}Cleaning mode</h3></div>`;
   if (hasModes) {
-    html += `<div class="group"><div class="seg">${m.cleaning_options.map((o) => `<button data-cmode="${o}" class="${o === cur ? "active" : ""}">${esc(MODE_LABEL[o] || human(o))}</button>`).join("")}</div>`;
+    html += `<div class="group"><div class="seg">${modes.map((o) => `<button data-cmode="${o}" class="${o === cur ? "active" : ""}">${esc(MODE_LABEL[o] || human(o))}</button>`).join("")}</div>`;
     if (cur === "smart_mode") html += `<div class="note">SmartPlan picks suction, water and route for each room on its own.</div>`;
     if (cur === "custom") html += `<div class="note">Uses the per-room settings you set up in the Roborock app.</div>`;
     html += `</div>`;

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
+import dataclasses
 import hashlib
 import json
 import logging
@@ -35,7 +37,8 @@ from roborock.data.v1.v1_containers import CleanRecord, DnDTimer, NetworkInfo
 from roborock.data.v1.v1_clean_modes import WashTowelModes
 from roborock.data.v1.v1_code_mappings import RoborockDockDustCollectionModeCode, RoborockStateCode
 from roborock.devices.device import RoborockDevice
-from roborock.devices.cache import DeviceCacheData
+from roborock.device_features import DeviceFeatures
+from roborock.devices.cache import CacheData, DeviceCacheData
 from roborock.devices.device_manager import DeviceManager, UserParams, create_device_manager
 from roborock.devices.file_cache import FileCache
 from roborock.devices.transport.local_channel import LocalChannel
@@ -979,6 +982,34 @@ def _unpickle(data: bytes) -> Any:
         return None
 
 
+def _plain(obj: Any, cls: type) -> Any:
+    """`obj` as a plain `cls`: just its data fields."""
+    if obj is None or type(obj) is cls:
+        return obj
+    plain = object.__new__(cls)
+    for f in dataclasses.fields(cls):
+        setattr(plain, f.name, getattr(obj, f.name, None))
+    return plain
+
+
+def _savable(data: CacheData) -> CacheData:
+    """The cache without python-roborock's live objects. It files its device-features and
+    network-info traits themselves, and those hold the connection, which can't be pickled,
+    so nothing got saved."""
+    out = copy.copy(data)
+    out.device_info = {
+        duid: dataclasses.replace(
+            entry,
+            device_features=_plain(entry.device_features, DeviceFeatures),
+            network_info=_plain(entry.network_info, NetworkInfo),
+        )
+        for duid, entry in data.device_info.items()
+    }
+    out.device_features = _plain(data.device_features, DeviceFeatures)
+    out.network_info = {duid: _plain(info, NetworkInfo) for duid, info in data.network_info.items()}
+    return out
+
+
 class SafeCache(FileCache):
     """python-roborock's device cache, but a damaged or half-written file can't stop the
     app from connecting: it's written to a temporary file first, and a bad one is ignored.
@@ -994,7 +1025,7 @@ class SafeCache(FileCache):
             return
 
         def write() -> None:
-            blob = pickle.dumps(data)  # before touching the file
+            blob = pickle.dumps(_savable(data))  # before touching the file
             tmp = self._path.with_suffix(".tmp")
             tmp.write_bytes(blob)
             os.replace(tmp, self._path)

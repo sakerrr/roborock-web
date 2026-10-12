@@ -214,10 +214,26 @@ function passOptions(act: string): number[] {
   return [1, 2];
 }
 
-/** Passes for the next clean: what you picked, else the robot's own setting. */
+/** Passes for a clean. Cleaning everywhere goes by the robot's own setting; rooms and zones
+ * by your pick, else that setting. */
 export function passes(act: string): number {
-  const n = S.repeat ?? S.status?.mode?.repeat ?? 1;
-  return act === "start" ? Math.min(n, 2) : n;
+  const own = S.status?.mode?.repeat ?? 1;
+  return act === "start" ? Math.min(S.pending.repeat ?? own, 2) : S.repeat ?? own;
+}
+
+/** Set the robot's passes for cleaning everywhere, as the Roborock app does: shown at once,
+ * then sent. A whole-home clean that's running takes the new count too. */
+export async function setHomePasses(n: number): Promise<void> {
+  S.pending.repeat = n;
+  if (S.status?.job_type === "global_clean_not_complete") S.jobArea = null; // "Left" goes by the new count
+  renderActions();
+  try {
+    await doAction("set_repeat", { repeat: n }, { quiet: true });
+  } catch {
+    // toast shown
+  }
+  delete S.pending.repeat;
+  renderActions();
 }
 
 /** m² the primary action would clean (once over). */
@@ -234,12 +250,15 @@ export function renderActions(): void {
   const p = primaryAction(st);
   const ph = st.phase;
   const idle = !["cleaning", "paused", "returning"].includes(ph ?? "");
-  const options = idle ? passOptions(p.act) : [];
-  const n = passes(p.act);
+  // A whole-home clean takes a new count mid-run; rooms and zones are set when they start.
+  const passAct = idle ? p.act : st.job_type === "global_clean_not_complete" ? "start" : "";
+  const options = passOptions(passAct);
+  const n = passes(passAct);
+  const passAttr = passAct === "start" ? "data-home-passes" : "data-repeat";
   const showStop = !idle || st.job;
   const showDock = ph !== "docked" && ph !== "dock";
   $("#action-card").innerHTML = `
-    ${options.length ? `<div class="repeat"><span class="label" style="margin:0">Passes</span><div class="seg small">${options.map((o) => `<button data-repeat="${o}" class="${o === n ? "active" : ""}" aria-pressed="${o === n}">${o}×</button>`).join("")}</div></div>` : ""}
+    ${options.length ? `<div class="repeat"><span class="label" style="margin:0">Passes</span><div class="seg small">${options.map((o) => `<button ${passAttr}="${o}" class="${o === n ? "active" : ""}" aria-pressed="${o === n}">${o}×</button>`).join("")}</div></div>` : ""}
     <div class="actions">
       <button class="btn-primary" id="primary-btn">${icon(p.icon)}<span>${esc(p.label)}</span></button>
       ${showStop ? `<button class="btn-round" data-act="stop" data-tip="Stop" aria-label="Stop">${icon("stop")}</button>` : ""}

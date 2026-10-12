@@ -39,6 +39,7 @@ export interface Pending {
   fan?: number;
   water?: number;
   mop?: number;
+  repeat?: number; // passes for cleaning everywhere
 }
 
 export interface AppState {
@@ -59,7 +60,7 @@ export interface AppState {
   zone: [number, number, number, number] | null; // base px
   pin: Point | null;
   drag: Point | null;
-  repeat: number | null; // passes picked for the next clean; null follows the robot's own setting
+  repeat: number | null; // passes picked for the next room or zone clean; null follows the robot's own setting
   hover: number;
   settings: Settings | null;
   fresh: Freshness | null; // room freshness, loaded for the Freshness view

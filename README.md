@@ -3,7 +3,7 @@
 A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S**; it should also work with other V1-protocol models such as the S7/S8/Q-series). It's designed for desktop and works on a phone too.
 
 - **Live map** with room names, the robot and the dock. It updates every few seconds while the robot cleans.
-- **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. Pick the passes next to the button: 1–3 for rooms and zones, 1 or 2 when cleaning everywhere.
+- **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. Pick the passes above the button: 1–3 for rooms and zones (set when they start), 1 or 2 when cleaning everywhere. That one is the robot's own setting, shared with the Roborock app, so you can change it mid-clean too.
 - **Move and zoom** the map like Google Maps: two-finger swipe, pinch, drag.
 - **Three views**: the colour map, a **3D view** you can turn around, and a **floor plan** with room sizes.
 - **What the robot saw**: carpets, obstacles it spotted (cables, shoes, pet mess…), where it mopped, and its route, on every view.

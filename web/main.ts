@@ -10,7 +10,7 @@ import {
 import { centerOnRobot, resetView } from "./map/panzoom";
 import { get3D, setViewMode, show3D, syncViewChrome } from "./map/views";
 import { setNotify } from "./notify";
-import { doAction, renderActions, renderSkeletons, renderStatus, setModeValue } from "./panels";
+import { doAction, renderActions, renderSkeletons, renderStatus, setHomePasses, setModeValue } from "./panels";
 import { logout, reconnect, refreshAuth, startLoops } from "./session";
 import { loadSettings, setChoice } from "./settings";
 import { S, type EditTool, type ViewMode } from "./state";
@@ -42,6 +42,7 @@ document.addEventListener("click", async (e) => {
   if (ds.view) return setViewMode(ds.view as ViewMode);
   if (ds.etool) return setEditTool(ds.etool as EditTool);
   if (ds.emode) return setEditMode(ds.emode === "rooms" ? "rooms" : "walls");
+  if (ds.homePasses) return setHomePasses(Number(ds.homePasses));
   if (ds.repeat) {
     S.repeat = Number(ds.repeat);
     renderActions();

@@ -205,6 +205,7 @@ class DeviceController:
         self._ip_file = data_dir / f"local-{device.duid}.json" if data_dir else None
         self._local_tried = 0.0
         self._local_blocked = False  # macOS keeps the app off the home network (see _try_local)
+        self._repeat: int | None = None  # whole-home passes last set from here, for robots that don't report them
         self._status_failed_at = 0.0
         self._status_message = "The robot didn't answer."
         # The last map is kept on disk so a restart shows it straight away.
@@ -340,7 +341,7 @@ class DeviceController:
                 "mop": s.mop_mode,
                 "mop_options": [{"code": c, "name": n} for c, n in s.mop_route_mapping.items()],
                 # Passes when cleaning everywhere: None if the robot can't be told.
-                "repeat": (s.repeat or 1) if _flag(features, "is_clean_count_setting_supported") or s.repeat else None,
+                "repeat": (s.repeat or self._repeat or 1) if _flag(features, "is_clean_count_setting_supported") or s.repeat else None,
             },
             "dock": {
                 "type": _name(s.dock_type),
@@ -754,14 +755,10 @@ class DeviceController:
         match name:
             case "start":
                 if "repeat" in params:
-                    # Whole-home passes are a robot setting (the Roborock app shares it); set it on the way.
-                    repeat = int(params["repeat"])
-                    if repeat not in WHOLE_HOME_PASSES:
-                        raise ValueError("Clean everywhere goes over the home once or twice")
-                    if repeat != s.repeat:
-                        await send(RoborockCommand.SET_CLEAN_REPEAT_TIMES, {"repeat": repeat})
-                        s.repeat = repeat
+                    await self._set_passes(params["repeat"])
                 await send(RoborockCommand.APP_START)
+            case "set_repeat":
+                await self._set_passes(params["repeat"])
             case "pause":
                 await send(RoborockCommand.APP_PAUSE)
             case "resume":
@@ -894,6 +891,17 @@ class DeviceController:
         # Give the robot a moment so the returned status reflects the change.
         await asyncio.sleep(0.6)
         return await self.status(force=True)
+
+    async def _set_passes(self, value: Any) -> None:
+        """Passes for cleaning everywhere are a robot setting, shared with the Roborock app, and
+        a whole-home clean takes a new count mid-run."""
+        repeat = int(value)
+        if repeat not in WHOLE_HOME_PASSES:
+            raise ValueError("Clean everywhere goes over the home once or twice")
+        s = self._p.status
+        if repeat != s.repeat:
+            await self._p.command.send(RoborockCommand.SET_CLEAN_REPEAT_TIMES, {"repeat": repeat})
+            s.repeat = self._repeat = repeat
 
     async def _switch(self, trait, on: bool) -> None:
         if trait is None:

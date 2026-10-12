@@ -56,7 +56,7 @@ export function remainingSeconds(st: Status): number | null {
   const t = st.clean_time ?? 0;
   // The robot's own progress, where it reports one, beats any guess.
   if (st.clean_percent != null && st.clean_percent >= 5 && st.clean_percent < 100) return (t * (100 - st.clean_percent)) / st.clean_percent;
-  const total = S.jobArea ?? (st.job_type === "global_clean_not_complete" ? homeArea() : null);
+  const total = S.jobArea ?? (st.job_type === "global_clean_not_complete" ? homeArea() * (st.mode?.repeat ?? 1) : null);
   if (!total) return null;
   const done = st.clean_area ?? 0;
   // Its pace on this run once it's had a few minutes, else the usual pace.

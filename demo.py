@@ -460,6 +460,11 @@ class DemoController:
             grid=grid_from_lines(lines, lines if self.water != 200 else [], LEFT, TOP + H - 1, W, H),
         ))
 
+    def _set_passes(self, value: Any) -> None:
+        if int(value) not in (1, 2):
+            raise ValueError("Clean everywhere goes over the home once or twice")
+        self.repeat = int(value)
+
     def _start(self, targets: list[tuple[float, float, float, float]], state: str, job: str) -> None:
         route: list[tuple[float, float]] = []
         cur = self.pos
@@ -635,9 +640,7 @@ class DemoController:
         match name:
             case "start" | "resume":
                 if name == "start" and "repeat" in params:
-                    if int(params["repeat"]) not in (1, 2):
-                        raise ValueError("Clean everywhere goes over the home once or twice")
-                    self.repeat = int(params["repeat"])
+                    self._set_passes(params["repeat"])
                 if self.state == "paused" and self._route:
                     self.state = "cleaning" if self.in_cleaning != "segment_clean_not_complete" else "segment_cleaning"
                 else:
@@ -668,6 +671,8 @@ class DemoController:
                 self.state = "going_to_target"
                 self.goto_target = target
                 self.active_zone = None
+            case "set_repeat":
+                self._set_passes(params["repeat"])
             case "set_cleaning_mode":
                 self.fan, self.water, self.mop = PRESETS[params["mode"]]
             case "set_fan":

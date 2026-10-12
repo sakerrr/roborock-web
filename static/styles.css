@@ -266,7 +266,7 @@ svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor;
 .btn-round:hover { background: var(--surface-2); }
 .btn-round:active { transform: scale(.95); }
 @media (hover: hover) { .btn-round[data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--card); font-size: 12px; font-weight: 600; padding: 5px 9px; border-radius: 8px; white-space: nowrap; pointer-events: none; } }
-.repeat { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.repeat { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .action-card { padding: 18px; }
 
 @media (max-width: 1023px) {

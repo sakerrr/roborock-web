@@ -5,7 +5,7 @@ import { $, busyBtn, errorMessage, esc, icon, toast } from "./dom";
 import { mapEmpty, setMap } from "./map/core";
 import { loadEstimates } from "./estimate";
 import { preload3D } from "./map/views";
-import { renderSkeletons, setConn, setStatus } from "./panels";
+import { renderActions, renderSkeletons, setConn, setStatus } from "./panels";
 import { loadSettings } from "./settings";
 import { S } from "./state";
 import type { Auth, Device, MapResponse, Status } from "./types";
@@ -228,7 +228,7 @@ let warmed = false;
 function warmUp(): void {
   if (warmed) return;
   warmed = true;
-  void loadEstimates();
+  void loadEstimates().then(renderActions); // the card may already be up without its estimate
   preload3D();
   setTimeout(() => {
     if (!S.settings && S.tab !== "settings") void loadSettings();

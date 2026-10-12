@@ -33,7 +33,7 @@ export function setStatus(st: Status): void {
   if (jobChanged) freshJobChanged(!!st.job);
   if (jobChanged && !st.job) {
     S.jobArea = null;
-    setTimeout(() => void loadEstimates(), 60_000); // once the run is filed
+    setTimeout(() => void loadEstimates().then(renderActions), 60_000); // once the run is filed
   }
   if (newProblem) {
     const h = errorHelp((st.error ?? st.dock_error)!, !st.error);

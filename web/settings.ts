@@ -3,7 +3,7 @@
 import { api, devicePath } from "./api";
 import { $, $opt, errorMessage, esc, fmtArea, fmtDuration, fmtWhen, human, icon } from "./dom";
 import { OPT_LABEL } from "./labels";
-import { doAction } from "./panels";
+import { blockedNote, doAction } from "./panels";
 import { S } from "./state";
 import { notifyEnabled, notifySupported, setNotify } from "./notify";
 import { themeChoice } from "./theme";
@@ -129,7 +129,7 @@ export function renderSettings(): void {
       ${d.firmware ? `<dt>Firmware</dt><dd>${esc(d.firmware)}</dd>` : ""}
       ${n.ip ? `<dt>IP address</dt><dd>${esc(n.ip)}</dd>` : ""}
       ${n.ssid ? `<dt>Wi‑Fi</dt><dd>${esc(n.ssid)}${n.rssi ? ` · ${n.rssi} dBm` : ""}</dd>` : ""}
-      <dt>Connection</dt><dd>${connectionText()}</dd>
+      <dt>Connection</dt><dd>${connectionText()}${blockedNote(S.status?.links)}</dd>
       <dt>Account</dt><dd>${esc(S.auth?.email || "–")}</dd>
     </dl>
     <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">

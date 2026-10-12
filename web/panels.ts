@@ -10,7 +10,7 @@ import { freshJobChanged } from "./freshness";
 import { notifyEnabled, notifyProblem, notifySupported } from "./notify";
 import { loadSettings } from "./settings";
 import { S, type Pending } from "./state";
-import type { ModeOption, Status } from "./types";
+import type { Links, ModeOption, Status } from "./types";
 
 export function setConn(ok: boolean, text: string): void {
   $("#conn").className = "conn " + (ok ? "on" : "off");
@@ -91,7 +91,13 @@ export function linksLine(st: Status): string {
   const l = st.links;
   if (!l) return "";
   const dot = (on: boolean) => `<span class="link-dot ${on ? "on" : ""}"></span>`;
-  return `<div class="links-line">${dot(l.local)}Home network${l.ip ? ` <span class="muted">${esc(l.ip)}</span>` : ""}<span class="sep">·</span>${dot(l.cloud)}Roborock cloud</div>`;
+  return `<div class="links-line">${dot(l.local)}Home network${l.ip ? ` <span class="muted">${esc(l.ip)}</span>` : ""}<span class="sep">·</span>${dot(l.cloud)}Roborock cloud</div>${blockedNote(l)}`;
+}
+
+/** How to let the app onto the home network, when macOS is what keeps it off. */
+export function blockedNote(l: Links | undefined): string {
+  if (!l?.blocked) return "";
+  return `<div class="links-note">macOS is keeping this app off your home network. Turn on <b>${esc(l.blocked)}</b> in System Settings → Privacy &amp; Security → Local Network, then restart the app.</div>`;
 }
 
 /** What went wrong, in plain words, how to fix it, and where it happened. */

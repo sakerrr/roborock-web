@@ -214,6 +214,7 @@ export interface Links {
   local: boolean; // directly, on the home network
   cloud: boolean; // through Roborock's cloud
   ip: string | null; // the robot's address on the home network, when known
+  blocked?: string | null; // the app macOS needs Local Network access for, when that blocks the direct link
 }
 
 export interface Settings {

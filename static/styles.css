@@ -622,3 +622,5 @@ svg.i.tiny { width: 12px; height: 12px; }
 .links-line .sep { color: var(--faint); margin: 0 2px; }
 .link-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
 .link-dot.on { background: #0ca30c; }
+.links-note { margin-top: 8px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.links-note b { color: var(--text); font-weight: 600; }

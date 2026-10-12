@@ -11,12 +11,14 @@ import asyncio
 import base64
 import copy
 import dataclasses
+import errno
 import hashlib
 import json
 import logging
 import os
 import pickle
 import socket
+import sys
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -201,6 +203,7 @@ class DeviceController:
         # The robot's address on the home network, for the direct link (see _ensure_local).
         self._ip_file = data_dir / f"local-{device.duid}.json" if data_dir else None
         self._local_tried = 0.0
+        self._local_blocked = False  # macOS keeps the app off the home network (see _try_local)
         self._status_failed_at = 0.0
         self._status_message = "The robot didn't answer."
         # The last map is kept on disk so a restart shows it straight away.
@@ -271,6 +274,8 @@ class DeviceController:
             "local": bool(self.device.is_local_connected),
             "cloud": bool(getattr(channel, "is_mqtt_connected", False)),
             "ip": self._known_ip(),
+            # The app macOS needs Local Network access for, when that's what stops the direct link.
+            "blocked": _launching_app() if self._local_blocked and not self.device.is_local_connected else None,
         }
 
     def _identity(self) -> dict[str, Any]:
@@ -491,8 +496,14 @@ class DeviceController:
             try:
                 await connect(prefer_cache=True)
             except Exception as err:  # noqa: BLE001
-                _LOGGER.info("Direct link to %s failed: %s", ip, err)
+                cause = _os_error(err)
+                # macOS refuses at once with "no route to host" when Local Network access is off
+                # for the app this was started from (System Settings > Privacy & Security).
+                self._local_blocked = sys.platform == "darwin" and cause is not None and cause.errno == errno.EHOSTUNREACH
+                detail = f" ({str(cause) or type(cause).__name__})" if cause else ""
+                _LOGGER.info("Direct link to %s failed: %s%s", ip, err, detail)
         if self.device.is_local_connected:
+            self._local_blocked = False
             self._save_ip(ip)
             self._status_failed_at = 0.0  # ask again right away
             return True
@@ -980,6 +991,21 @@ def _unpickle(data: bytes) -> Any:
     except Exception:  # noqa: BLE001 - empty or damaged: start with a fresh cache
         _LOGGER.info("Ignoring a damaged device cache")
         return None
+
+
+def _os_error(err: BaseException | None) -> OSError | None:
+    """The OS error under python-roborock's wrapping, if there is one."""
+    while err is not None:
+        if isinstance(err, OSError):
+            return err
+        err = err.__cause__ or err.__context__
+    return None
+
+
+def _launching_app() -> str:
+    """The app this was started from, as macOS lists it under Local Network."""
+    names = {"iTerm.app": "iTerm", "Apple_Terminal": "Terminal", "vscode": "Visual Studio Code", "WarpTerminal": "Warp"}
+    return names.get(os.environ.get("TERM_PROGRAM", ""), "the app you started it from")
 
 
 def _plain(obj: Any, cls: type) -> Any:

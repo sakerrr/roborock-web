@@ -3,13 +3,13 @@
 A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S**; it should also work with other V1-protocol models such as the S7/S8/Q-series). It's designed for desktop and works on a phone too.
 
 - **Live map** with room names, the robot and the dock. It updates every few seconds while the robot cleans.
-- **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. You can choose 1–3 passes.
+- **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. Pick the passes next to the button: 1–3 for rooms and zones, 1 or 2 when cleaning everywhere.
 - **Move and zoom** the map like Google Maps: two-finger swipe, pinch, drag.
 - **Three views**: the colour map, a **3D view** you can turn around, and a **floor plan** with room sizes.
 - **What the robot saw**: carpets, obstacles it spotted (cables, shoes, pet mess…), where it mopped, and its route, on every view.
 - **Edit the map**: invisible walls, no-go and no-mop zones, and merging, splitting or renaming rooms.
 - **Start / pause / resume / stop / dock / locate**.
-- **Cleaning mode**: Vacuum, Vac & Mop, Mop, Custom or SmartPlan. You can also set suction, water flow and mop route.
+- **Cleaning mode**: Vacuum, Vac & Mop, Mop or Custom (SmartPlan is hidden; turn it back on in Settings → Appearance). You can also set suction, water flow and mop route.
 - **Dock**: empty the bin, wash the mop, dry the mop, and see tank and dust bag warnings.
 - **Settings**: volume, do not disturb, child lock, status light, carpet boost, auto-empty mode, mop wash mode, smart mop washing, auto drying.
 - **Maintenance** (brush, filter and sensor life, with reset), **routines**, **cleaning history**, and device info.
@@ -120,6 +120,7 @@ If a map has no-carpet zones made in the Roborock app, the editor warns you: the
 - There's no way around the codes: Roborock now asks for an email code even when you sign in with a password.
 - If the robot or Roborock isn't responding, use **Reconnect**. It retries with your saved sign-in. Signing out means you'll need a new code to get back in.
 - The app talks to the robot directly on your home network when it can, and through Roborock's cloud otherwise (maps always come through the cloud). It remembers the robot's address, and looks for it on the network if needed, so a cloud outage doesn't cut you off. Settings → About shows which ways are up.
+- On macOS, the app you start it from (Terminal, iTerm…) needs **Local Network** access for that direct link: System Settings → Privacy & Security → Local Network. Without it the app can only use the cloud, and it tells you so.
 - A log of what the app did, connections included, is kept in `data/app.log` (it rotates, so it stays small).
 
 ## Development

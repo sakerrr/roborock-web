@@ -198,11 +198,26 @@ function primaryAction(st: Status): PrimaryAction {
   if (ph === "paused" || (ph === "error" && st.job)) return { label: "Resume", icon: "play", act: "resume" };
   if (S.tool === "rooms" && S.selected.length) {
     const n = S.selected.length;
-    return { label: `Clean ${n} room${n > 1 ? "s" : ""}`, icon: "play", act: "clean_rooms", params: { rooms: S.selected, repeat: S.repeat } };
+    return { label: `Clean ${n} room${n > 1 ? "s" : ""}`, icon: "play", act: "clean_rooms", params: { rooms: S.selected, repeat: passes("clean_rooms") } };
   }
-  if (S.tool === "zone" && S.zone) return { label: "Clean zone", icon: "play", act: "clean_zone", params: { rect: S.zone, repeat: S.repeat } };
+  if (S.tool === "zone" && S.zone) return { label: "Clean zone", icon: "play", act: "clean_zone", params: { rect: S.zone, repeat: passes("clean_zone") } };
   if (S.tool === "goto" && S.pin) return { label: "Go here", icon: "play", act: "goto", params: { x: S.pin.x, y: S.pin.y } };
-  return { label: "Clean everywhere", icon: "play", act: "start" };
+  return { label: "Clean everywhere", icon: "play", act: "start", params: passOptions("start").length ? { repeat: passes("start") } : {} };
+}
+
+/** The pass counts on offer for a clean: the robot takes 1-2 for the whole home (when it
+ * lets you set them, and the mode doesn't decide on its own), 1-3 for rooms and zones. */
+function passOptions(act: string): number[] {
+  if (act === "clean_rooms" || act === "clean_zone") return [1, 2, 3];
+  const m = S.status?.mode;
+  if (act !== "start" || m?.repeat == null || ["smart_mode", "custom"].includes(m.cleaning ?? "")) return [];
+  return [1, 2];
+}
+
+/** Passes for the next clean: what you picked, else the robot's own setting. */
+export function passes(act: string): number {
+  const n = S.repeat ?? S.status?.mode?.repeat ?? 1;
+  return act === "start" ? Math.min(n, 2) : n;
 }
 
 /** m² the primary action would clean (once over). */
@@ -219,11 +234,12 @@ export function renderActions(): void {
   const p = primaryAction(st);
   const ph = st.phase;
   const idle = !["cleaning", "paused", "returning"].includes(ph ?? "");
-  const showRepeat = idle && ((S.tool === "rooms" && S.selected.length) || (S.tool === "zone" && S.zone));
+  const options = idle ? passOptions(p.act) : [];
+  const n = passes(p.act);
   const showStop = !idle || st.job;
   const showDock = ph !== "docked" && ph !== "dock";
   $("#action-card").innerHTML = `
-    ${showRepeat ? `<div class="repeat"><span class="label" style="margin:0">Passes</span><div class="seg small">${[1, 2, 3].map((n) => `<button data-repeat="${n}" class="${S.repeat === n ? "active" : ""}">${n}×</button>`).join("")}</div></div>` : ""}
+    ${options.length ? `<div class="repeat"><span class="label" style="margin:0">Passes</span><div class="seg small">${options.map((o) => `<button data-repeat="${o}" class="${o === n ? "active" : ""}" aria-pressed="${o === n}">${o}×</button>`).join("")}</div></div>` : ""}
     <div class="actions">
       <button class="btn-primary" id="primary-btn">${icon(p.icon)}<span>${esc(p.label)}</span></button>
       ${showStop ? `<button class="btn-round" data-act="stop" data-tip="Stop" aria-label="Stop">${icon("stop")}</button>` : ""}
@@ -231,7 +247,7 @@ export function renderActions(): void {
       <button class="btn-round" data-act="locate" data-tip="Find my robot" aria-label="Find my robot">${icon("bell")}</button>
     </div>
     ${idle ? (() => {
-      const est = estimateText(jobAreaFor(p), p.act === "start" ? 1 : S.repeat);
+      const est = estimateText(jobAreaFor(p), options.length ? n : 1);
       return est ? `<div class="estimate">${icon("clock", "i tiny")}${est}</div>` : "";
     })() : ""}`;
   const btn = $<HTMLButtonElement>("#primary-btn");
@@ -240,7 +256,10 @@ export function renderActions(): void {
     const act = primaryAction(S.status);
     try {
       await doAction(act.act, act.params ?? {}, { button: btn });
-      if (["start", "clean_rooms", "clean_zone"].includes(act.act)) S.jobArea = jobAreaFor(act) * (act.act === "start" ? 1 : S.repeat);
+      if (["start", "clean_rooms", "clean_zone"].includes(act.act)) {
+        S.jobArea = jobAreaFor(act) * (Number(act.params?.repeat) || 1);
+        S.repeat = null; // a pick is for one clean; the next follows the robot's setting again
+      }
       if (["clean_rooms", "clean_zone", "goto"].includes(act.act)) {
         S.jobRooms = act.act === "clean_rooms" ? [...S.selected] : null;
         S.selected = [];

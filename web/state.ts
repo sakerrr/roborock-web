@@ -59,7 +59,7 @@ export interface AppState {
   zone: [number, number, number, number] | null; // base px
   pin: Point | null;
   drag: Point | null;
-  repeat: number;
+  repeat: number | null; // passes picked for the next clean; null follows the robot's own setting
   hover: number;
   settings: Settings | null;
   fresh: Freshness | null; // room freshness, loaded for the Freshness view
@@ -109,7 +109,7 @@ export const S: AppState = {
   zone: null,
   pin: null,
   drag: null,
-  repeat: 1,
+  repeat: null,
   hover: 0,
   settings: null,
   fresh: null,

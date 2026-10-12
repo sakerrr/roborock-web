@@ -333,6 +333,7 @@ class DemoController:
         self.battery = 100
         self.in_cleaning = "complete"
         self.fan, self.water, self.mop = PRESETS["vac_and_mop"]
+        self.repeat = 1  # passes when cleaning everywhere
         self.pos = DOCKED_POS
         self.angle = 90.0
         self.history, self.path = _history()
@@ -569,6 +570,7 @@ class DemoController:
                 "fan": self.fan, "fan_options": [{"code": c, "name": n} for n, c in FAN],
                 "water": self.water, "water_options": [{"code": c, "name": n} for n, c in WATER],
                 "mop": self.mop, "mop_options": [{"code": c, "name": n} for n, c in MOP],
+                "repeat": self.repeat,
             },
             "dock": {
                 "type": "qrevo_s_dock", "can_empty": True, "can_wash": True, "can_dry": True,
@@ -632,6 +634,10 @@ class DemoController:
         s = self.settings_state
         match name:
             case "start" | "resume":
+                if name == "start" and "repeat" in params:
+                    if int(params["repeat"]) not in (1, 2):
+                        raise ValueError("Clean everywhere goes over the home once or twice")
+                    self.repeat = int(params["repeat"])
                 if self.state == "paused" and self._route:
                     self.state = "cleaning" if self.in_cleaning != "segment_clean_not_complete" else "segment_cleaning"
                 else:

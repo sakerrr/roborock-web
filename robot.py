@@ -77,6 +77,7 @@ CODES_THROTTLED = (
     "Wait a minute and try again. If a code arrived by email in the last few minutes, enter it below."
 )
 SETTING_TIMEOUT = 8.0
+WHOLE_HOME_PASSES = (1, 2)  # what the robot takes for cleaning everywhere; rooms and zones go up to 3
 
 S = RoborockStateCode
 CLEANING_STATES = {
@@ -338,6 +339,8 @@ class DeviceController:
                 "water_options": [{"code": c, "name": n} for c, n in s.water_mode_mapping.items()],
                 "mop": s.mop_mode,
                 "mop_options": [{"code": c, "name": n} for c, n in s.mop_route_mapping.items()],
+                # Passes when cleaning everywhere: None if the robot can't be told.
+                "repeat": (s.repeat or 1) if _flag(features, "is_clean_count_setting_supported") or s.repeat else None,
             },
             "dock": {
                 "type": _name(s.dock_type),
@@ -750,6 +753,14 @@ class DeviceController:
 
         match name:
             case "start":
+                if "repeat" in params:
+                    # Whole-home passes are a robot setting (the Roborock app shares it); set it on the way.
+                    repeat = int(params["repeat"])
+                    if repeat not in WHOLE_HOME_PASSES:
+                        raise ValueError("Clean everywhere goes over the home once or twice")
+                    if repeat != s.repeat:
+                        await send(RoborockCommand.SET_CLEAN_REPEAT_TIMES, {"repeat": repeat})
+                        s.repeat = repeat
                 await send(RoborockCommand.APP_START)
             case "pause":
                 await send(RoborockCommand.APP_PAUSE)

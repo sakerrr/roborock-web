@@ -25,6 +25,7 @@ export interface CleaningModes {
   water_options: ModeOption[];
   mop: number | null;
   mop_options: ModeOption[];
+  repeat?: number | null; // passes when cleaning everywhere (the robot's setting); null if it can't be set
 }
 
 export interface DockStatus {

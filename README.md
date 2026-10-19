@@ -1,6 +1,10 @@
 # Roborock web
 
-A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S**; it should also work with other V1-protocol models such as the S7/S8/Q-series). It's designed for desktop and works on a phone too.
+A calm web app for your Roborock robot vacuum that runs on your own computer. It's built for a big screen, with a live map you can pan, zoom and turn in 3D, and it works on a phone too.
+
+![The app with the demo robot: status, passes and cleaning mode on the left, the live map on the right](docs/screenshot.png)
+
+Try it without a robot or an account: `./start.command --demo`.
 
 - **Live map** with room names, the robot and the dock. It updates every few seconds while the robot cleans.
 - **Click rooms** to clean just those, **drag a zone**, or **click a spot** to send the robot there. Pick the passes above the button: 1–3 for rooms and zones (set when they start), 1 or 2 when cleaning everywhere. That one is the robot's own setting, shared with the Roborock app, so you can change it mid-clean too.
@@ -16,16 +20,34 @@ A calm, local web app for controlling a Roborock vacuum (built for the **Qrevo S
 
 It talks to the robot through [python-roborock](https://github.com/python-roborock/python-roborock), the same library Home Assistant uses. It goes over your local network when it can and through the Roborock cloud otherwise.
 
+## Which robots work
+
+- **Tested:** Roborock Qrevo S.
+- **Should work:** other Roborock vacuums that use Roborock's main ("V1") protocol, which is most of them: the S5, S6, S7 and S8 series, the Q5, Q7 and Q8 series, and the Qrevo family. Features your model or dock doesn't have (mop washing, drying, auto-empty, cleaning count…) are hidden.
+- **Doesn't work:**
+  - Roborock models on the newer protocols: the Dyad and Zeo, and some recent Q-series models. They sign in, but are listed as not supported.
+  - Robots added to **Mi Home / Xiaomi Home** instead of the Roborock app.
+  - Other brands (Dreame, Ecovacs, iRobot…).
+
+If you try it with another model, please open an issue saying whether it worked.
+
 ## Start
 
-macOS: double-click **`start.command`**. Or, from a terminal:
+You need Python 3.11+ (or [uv](https://docs.astral.sh/uv/)) and Node.js 18+.
+
+```bash
+git clone https://github.com/sakerrr/roborock-web.git
+cd roborock-web
+```
+
+macOS: double-click **`start.command`**. On macOS or Linux, from a terminal:
 
 ```bash
 ./start.command            # your robot
 ./start.command --demo     # a simulated Qrevo S, no account needed
 ```
 
-The first run sets up a Python environment (Python 3.11+ or [uv](https://docs.astral.sh/uv/)) and builds the interface (Node.js 18+). After that, the app opens at http://localhost:8765.
+The first run sets up a Python environment and builds the interface. After that, the app opens at http://localhost:8765. (On Windows, run it under WSL; that hasn't been tested.)
 
 Sign in with the email you use in the **Roborock app**. You'll get a one-time code by email, just like the app sends. Mi Home / Xiaomi Home accounts are not supported.
 

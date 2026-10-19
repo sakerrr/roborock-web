@@ -147,3 +147,7 @@ Python changes need a server restart. If the app notices code changed since it s
 | `demo.py` | The simulated robot behind `--demo` |
 | `web/` | The interface in TypeScript: `main.ts` (start-up), `panels.ts` (sidebar), `session.ts` (sign-in, polling), `settings.ts`, `freshness.ts`, `map/` (map, pan & zoom, editor, views, fit), `map3d.ts` (3D) |
 | `static/` | `index.html`, `styles.css`, and the built bundle in `dist/` |
+
+## License
+
+[MIT](LICENSE). Not affiliated with or endorsed by Roborock; "Roborock" and "Qrevo" are their trademarks.

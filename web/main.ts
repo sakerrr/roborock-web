@@ -1,7 +1,7 @@
 // Entry point: global button handling and start-up.
 
 import { $, $$, $opt, closest, icon } from "./dom";
-import { mapEmpty, refreshMapOverlays } from "./map/core";
+import { closeMapHistory, mapEmpty, previewMapSnapshot, refreshMapOverlays, showMapHistory } from "./map/core";
 import { fitMap } from "./map/fit";
 import {
   clearEditPicks, deleteSelected, discardEdits, endEdit, mergeRooms, renameRoom, saveRestrictions,
@@ -39,6 +39,7 @@ document.addEventListener("click", async (e) => {
     window.scrollTo({ top: 0 });
     return;
   }
+  if (ds.snapshot) return previewMapSnapshot(ds.snapshot);
   if (ds.view) return setViewMode(ds.view as ViewMode);
   if (ds.etool) return setEditTool(ds.etool as EditTool);
   if (ds.emode) return setEditMode(ds.emode === "rooms" ? "rooms" : "walls");
@@ -89,6 +90,11 @@ document.addEventListener("click", async (e) => {
       S.updateDismissed = true;
       $("#update-banner").hidden = true;
       return;
+    case "history-open":
+      return showMapHistory();
+    case "history-close":
+    case "history-toggle":
+      return closeMapHistory();
     case "edit-start":
       return startEdit();
     case "edit-done":

@@ -130,6 +130,21 @@ export interface MapPayload {
   goto_path?: Polyline[];
   maps: { flag: number; name: string }[];
   current_map: number | null;
+  /** Locally saved map snapshots for comparison. */
+  snapshots?: MapSnapshot[];
+}
+
+export interface MapSnapshot {
+  id: string;
+  created_at: number;
+  version: string;
+  base: string;
+  width: number;
+  height: number;
+  current_map: number | null;
+  rooms: Room[];
+  restrictions: Restriction[];
+  no_carpet_zones: number;
 }
 
 export type MapResponse =

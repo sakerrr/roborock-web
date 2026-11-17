@@ -6,7 +6,7 @@ import { doAction, renderActions, renderStatus } from "../panels";
 import { freshLabel, freshMapChanged } from "../freshness";
 import { pollMap } from "../session";
 import { S, type Tool } from "../state";
-import type { MapResponse, Mask, Point } from "../types";
+import type { MapPayload, MapResponse, MapSnapshot, Mask, Point } from "../types";
 import { copyRestrictions, editRoomClick, endEdit, renderEditFoot, renderShapes, syncInnerClasses } from "./editor";
 import { drawSvg, inner, mapImg, selCanvas, shapesSvg } from "./elements";
 import { fitMap, releaseStage } from "./fit";
@@ -34,6 +34,69 @@ export async function decodeMask(src: string): Promise<Mask> {
   return { w: c.width, h: c.height, data: ctx.getImageData(0, 0, c.width, c.height).data };
 }
 
+const snapshotKey = (duid: string) => `roborock-map-snapshots-${duid}`;
+let viewedSnapshot: MapSnapshot | null = null;
+
+function readSnapshots(): MapSnapshot[] {
+  if (!S.duid) return [];
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(snapshotKey(S.duid)) ?? "[]");
+    return Array.isArray(parsed) ? parsed as MapSnapshot[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberMap(map: MapPayload): MapSnapshot[] {
+  if (!S.duid || !map.base) return readSnapshots();
+  const snapshots = readSnapshots();
+  const signature = JSON.stringify({ version: map.version, rooms: map.rooms, restrictions: map.restrictions });
+  if (snapshots.some((item) => JSON.stringify({ version: item.version, rooms: item.rooms, restrictions: item.restrictions }) === signature)) return snapshots;
+  const snapshot: MapSnapshot = {
+    id: `${Date.now()}-${map.version}`,
+    created_at: Date.now(),
+    version: map.version,
+    base: map.base,
+    width: map.width,
+    height: map.height,
+    current_map: map.current_map,
+    rooms: map.rooms.map((room) => ({ ...room })),
+    restrictions: map.restrictions.map((item) => ({ ...item, mm: [...item.mm] })),
+    no_carpet_zones: map.no_carpet_zones,
+  };
+  const next = [...snapshots, snapshot].slice(-12);
+  try { localStorage.setItem(snapshotKey(S.duid), JSON.stringify(next)); } catch { /* storage may be full or disabled */ }
+  return next;
+}
+
+function renderSnapshots(): void {
+  const panel = $("#map-history");
+  const snapshots = readSnapshots();
+  panel.hidden = false;
+  panel.innerHTML = `<div class="history-head"><b>Map history</b><button class="btn-soft" data-act="history-close">Close</button></div>
+    <p class="muted">Saved on this device. Selecting a version previews it without changing the robot.</p>
+    ${snapshots.map((item) => `<button class="history-item ${viewedSnapshot?.id === item.id ? "active" : ""}" data-snapshot="${esc(item.id)}">
+      <span>${new Date(item.created_at).toLocaleString()}</span><small>${item.rooms.length} rooms · ${item.width} × ${item.height}</small>
+    </button>`).join("") || '<span class="muted">No saved map versions yet.</span>'}
+    ${viewedSnapshot ? `<div class="history-preview"><img src="${viewedSnapshot.base}" alt="Previous map"><div>${viewedSnapshot.rooms.map((room) => esc(room.name)).join(", ")}</div></div>` : ""}
+    <button class="btn-soft" data-act="history-toggle">Return to live map</button>`;
+}
+
+export function showMapHistory(): void { renderSnapshots(); }
+
+export function closeMapHistory(): void {
+  viewedSnapshot = null;
+  $("#map-history").hidden = true;
+}
+
+export function previewMapSnapshot(id: string): void {
+  const snapshot = readSnapshots().find((item) => item.id === id);
+  if (!snapshot || !S.map) return;
+  viewedSnapshot = snapshot;
+  mapImg.src = snapshot.base;
+  renderSnapshots();
+}
+
 export async function setMap(res: Extract<MapResponse, { image: string }>): Promise<void> {
   // While it cleans, only the robot and its path change: keep the images it already has.
   const prev = S.map;
@@ -42,8 +105,11 @@ export async function setMap(res: Extract<MapResponse, { image: string }>): Prom
   const mask = same && S.mask ? S.mask : (await Promise.all([loadImg(m.base), decodeMask(m.mask)]))[1];
   S.map = m;
   S.mask = mask;
-  const src = viewImage();
+  const snapshots = rememberMap(m);
+  const src = viewedSnapshot ? viewedSnapshot.base : viewImage();
   if (mapImg.src !== src) mapImg.src = src;
+  const historyButton = $("#map-history-open");
+  historyButton.hidden = snapshots.length === 0;
   if (selCanvas.width !== mask.w || selCanvas.height !== mask.h) {
     selCanvas.width = mask.w;
     selCanvas.height = mask.h;
@@ -61,6 +127,7 @@ export async function setMap(res: Extract<MapResponse, { image: string }>): Prom
       if (!ed.items.some((i) => i.id === ed.sel)) ed.sel = null;
     }
   }
+  if (viewedSnapshot) renderSnapshots();
   $("#map-empty").hidden = true;
   inner.hidden = false;
   fitMap();
